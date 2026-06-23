@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cuteness Report Center</title>
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --navy: #141497;
+      --light: #F3F3F3;
+      --mono: 'Input Mono', 'Courier New', Courier, monospace;
+      --fs: clamp(0.73rem, 1.47vw, 2.1rem);  /* 70% of original */
+      --ls: -0.06em;
+    }
+
+    html {
+      background: var(--navy);
+    }
+
+    body {
+      min-height: 100vh;
+      background: var(--navy);
+      color: var(--light);
+      font-family: var(--mono);
+      font-size: var(--fs);
+      letter-spacing: var(--ls);
+      font-weight: 400;
+      overflow-y: auto;
+    }
+
+    /* ── Header Badge (in-block, above text) ── */
+    .header-badge {
+      display: inline-block;
+      background: var(--light);
+      color: var(--navy);
+      font-family: var(--mono);
+      font-size: var(--fs);
+      letter-spacing: var(--ls);
+      font-weight: 400;
+      line-height: 1.2;
+      padding: 0.12em 0.38em;
+      white-space: nowrap;
+      margin-bottom: 1.6em;
+    }
+
+    /* ── Main Content ──────────────────────── */
+    #content {
+      position: relative;
+      z-index: 10;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      /* 9.5em ≈ half of (badge + gap + 10 text lines) at --fs */
+      padding: max(40px, calc(50vh - 9.5em)) 5% 22vh;
+    }
+
+    #text-block {
+      max-width: 54ch;
+      width: 100%;
+    }
+
+    .text-line {
+      display: block;
+      line-height: 1.58;
+      white-space: pre-wrap;
+    }
+
+    /* ── Blinking Cursor ───────────────────── */
+    .cursor {
+      display: inline-block;
+      width: 0.55em;
+      height: 0.82em;
+      background: var(--light);
+      vertical-align: bottom;
+      margin-bottom: 0.07em;
+      margin-left: 0.06em;
+      animation: blink 1s step-end infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0; }
+    }
+
+    /* ── Keyring Silhouettes ───────────────── */
+    .keyring {
+      position: fixed;
+      z-index: 1;
+      opacity: 0;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    @keyframes kr-reveal {
+      0%   { opacity: 0;    filter: blur(42px) brightness(0.20); }
+      12%  { opacity: 0.12; filter: blur(34px) brightness(0.24); }
+      40%  { opacity: 0.38; filter: blur(20px) brightness(0.30); }
+      72%  { opacity: 0.60; filter: blur(11px) brightness(0.37); }
+      100% { opacity: 0.78; filter: blur(6px)  brightness(0.44); }
+    }
+
+    .keyring.reveal {
+      animation: kr-reveal 17s ease-out forwards;
+    }
+
+    /* positions derived from Figma x/y → viewport % */
+    #k1 { left: -4%;  bottom: 4%;  width: 19%; }
+    #k2 { left: 59%;  bottom: 0%;  width: 19%; }
+    #k3 { left:  7%;  bottom: 0%;  width: 19%; }
+    #k4 { left: 86%;  bottom: 5%;  width: 19%; }
+    #k5 { left: 23%;  bottom: 3%;  width: 19%; }
+    #k6 { left: 41%;  bottom: 0%;  width: 19%; }
+    #k7 { left: 74%;  bottom: 2%;  width: 19%; }
+  </style>
+</head>
+<body>
+
+  <!-- Keyring silhouettes — background layer -->
+  <img class="keyring" id="k1" src="assets/keyring-01.png" alt="">
+  <img class="keyring" id="k2" src="assets/keyring-02.png" alt="">
+  <img class="keyring" id="k3" src="assets/keyring-03.png" alt="">
+  <img class="keyring" id="k4" src="assets/keyring-04.png" alt="">
+  <img class="keyring" id="k5" src="assets/keyring-05.png" alt="">
+  <img class="keyring" id="k6" src="assets/keyring-06.png" alt="">
+  <img class="keyring" id="k7" src="assets/keyring-07.png" alt="">
+
+  <!-- Text content -->
+  <main id="content">
+    <div id="text-block">
+      <div class="header-badge">Cuteness Report Center</div>
+      <div id="prompt" class="text-line">Press SPACE to begin<span class="cursor"></span></div>
+      <div id="text-container"></div>
+    </div>
+  </main>
+
+  <script>
+    /* ── Script ────────────────────────────── */
+    const SCRIPT = [
+      { group: 'A', text: 'Hello.' },
+      { group: 'A', text: 'You used to be cuter, you know that?' },
+      { group: 'A', text: 'We all did.' },
+      { group: 'B', text: 'Then something changed.' },
+      { group: 'B', text: 'Small. Soft. A little dumb-looking.' },
+      { group: 'B', text: 'Keyrings.', startKeyrings: true },
+      { group: 'C', text: 'It was totally okay to be cute — until they started draining it from us.' },
+      { group: 'C', text: 'Slowly. Without permission.' },
+      { group: 'C', text: 'Our mole just sent us a message: You are their next target.' },
+      { group: 'C', text: 'Help us collect the evidence.' },
+    ];
+
+    const CHAR_DELAY  = 52;    /* ms per character                        */
+    const CURSOR_HOLD = 750;   /* ms cursor stays after line completes    */
+    const GROUP_PAUSE = 2600;  /* ms pause between groups                 */
+    const LINE_GAP    = 60;    /* ms between lines within the same group  */
+
+    const allKeyrings   = document.querySelectorAll('.keyring');
+    const textContainer = document.getElementById('text-container');
+    const promptEl      = document.getElementById('prompt');
+
+    let started = false;
+
+    /* ── Helpers ─────────────────────────── */
+    function wait(ms) {
+      return new Promise(r => setTimeout(r, ms));
+    }
+
+    async function typeLine(text) {
+      const div = document.createElement('div');
+      div.className = 'text-line';
+
+      const span   = document.createElement('span');
+      const cursor = document.createElement('span');
+      cursor.className = 'cursor';
+
+      div.appendChild(span);
+      div.appendChild(cursor);
+      textContainer.appendChild(div);
+      div.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+      for (let i = 0; i < text.length; i++) {
+        span.textContent += text[i];
+        await wait(CHAR_DELAY);
+      }
+
+      await wait(CURSOR_HOLD);
+      cursor.remove();
+    }
+
+    function activateKeyrings() {
+      allKeyrings.forEach((k, i) => {
+        k.style.animationDelay = (i * 0.14) + 's';
+        k.classList.add('reveal');
+      });
+    }
+
+    /* ── Main sequence ───────────────────── */
+    async function runScript() {
+      let prevGroup = null;
+
+      for (let i = 0; i < SCRIPT.length; i++) {
+        const entry = SCRIPT[i];
+
+        if (prevGroup !== null && prevGroup !== entry.group) {
+          await wait(GROUP_PAUSE);
+        } else if (prevGroup !== null) {
+          await wait(LINE_GAP);
+        }
+
+        await typeLine(entry.text);
+
+        if (entry.startKeyrings) {
+          activateKeyrings();
+        }
+
+        prevGroup = entry.group;
+      }
+    }
+
+    /* ── Spacebar gate ───────────────────── */
+    document.addEventListener('keydown', e => {
+      if (e.code === 'Space' && !started) {
+        e.preventDefault();
+        started = true;
+        promptEl.remove();
+        runScript();
+      }
+    });
+  </script>
+</body>
+</html>

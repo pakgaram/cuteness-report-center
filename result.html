@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Cuteness Report</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --navy: #141497;
+      --light: #F3F3F3;
+      --dim:   rgba(243, 243, 243, 0.45);
+      --mono:  'Input Mono', 'Courier New', Courier, monospace;
+    }
+
+    html, body {
+      min-height: 100vh;
+      background: var(--navy);
+      color: var(--light);
+      font-family: var(--mono);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .page {
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 48px 28px 72px;
+    }
+
+    /* ── Header ─────────────────────────────────── */
+    .header {
+      text-align: center;
+      font-size: 0.65rem;
+      letter-spacing: 0.14em;
+      color: var(--dim);
+      margin-bottom: 36px;
+    }
+
+    /* ── Scattered letters ───────────────────────── */
+    .letters-area {
+      position: relative;
+      width: 100%;
+      height: 260px;
+      margin-bottom: 36px;
+    }
+
+    .letter-img {
+      position: absolute;
+      display: block;
+      /* size / position set by JS */
+    }
+
+    .empty-msg {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      color: var(--dim);
+      letter-spacing: 0.06em;
+    }
+
+    /* ── Divider ─────────────────────────────────── */
+    .divider {
+      border: none;
+      border-top: 1px solid rgba(243, 243, 243, 0.18);
+      margin-bottom: 36px;
+    }
+
+    /* ── Poem ────────────────────────────────────── */
+    .poem {
+      font-size: clamp(0.78rem, 3.6vw, 0.96rem);
+      line-height: 2;
+      text-align: center;
+      color: var(--light);
+      white-space: pre-line;
+      letter-spacing: 0.01em;
+      margin-bottom: 48px;
+    }
+
+    /* ── Footer ──────────────────────────────────── */
+    .footer {
+      text-align: center;
+      font-size: 0.6rem;
+      color: var(--dim);
+      letter-spacing: 0.1em;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="page">
+    <p class="header">CUTENESS REPORT CENTER</p>
+
+    <div class="letters-area" id="letters-area"></div>
+
+    <hr class="divider">
+
+    <p class="poem">Cuteness happens in the second
+you lose control — just for a moment.
+
+The letter you didn't mean to type.
+The mistake you tried to erase.
+
+That split second of imperfection
+is the most human thing about you.
+
+And the keyrings have been stealing it.</p>
+
+    <p class="footer">— Cuteness Report Center</p>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const raw    = params.get('data');
+    let mistakeLetters = [];
+    try {
+      if (raw) mistakeLetters = JSON.parse(decodeURIComponent(atob(raw)));
+    } catch (e) {
+      console.warn('result: data decode failed', e);
+    }
+
+    const area = document.getElementById('letters-area');
+    const areaW = area.offsetWidth;
+    const areaH = area.offsetHeight;
+
+    if (mistakeLetters.length === 0) {
+      const msg = document.createElement('div');
+      msg.className = 'empty-msg';
+      msg.textContent = 'no mistakes recorded.';
+      area.appendChild(msg);
+    } else {
+      mistakeLetters.forEach(letter => {
+        const lc = String(letter).toLowerCase();
+        if (!/^[a-z]$/.test(lc)) return;
+
+        const size  = 30 + Math.floor(Math.random() * 51);        /* 30~80 px */
+        const angle = Math.round((Math.random() - 0.5) * 60);     /* -30~30 deg */
+        const x     = Math.random() * Math.max(0, areaW - size);
+        const y     = Math.random() * Math.max(0, areaH - size);
+
+        const img = document.createElement('img');
+        img.className = 'letter-img';
+        img.src   = `assets/letters/${lc}.svg`;
+        img.alt   = lc;
+        img.width = size;
+        img.height = size;
+        img.style.left      = `${x}px`;
+        img.style.top       = `${y}px`;
+        img.style.transform = `rotate(${angle}deg)`;
+
+        area.appendChild(img);
+      });
+    }
+  </script>
+
+</body>
+</html>

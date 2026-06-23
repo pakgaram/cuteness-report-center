@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CRC — Observation Unit 01</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --navy:  #141497;
+      --light: #F3F3F3;
+      --white: #FFFFFF;
+      --black: #000000;
+      --mono:  'Input Mono', 'Courier New', Courier, monospace;
+      --ls:    -0.06em;
+    }
+
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+
+    /* ── Layer stack ──────────────────────────────────────────── */
+    #webcam, #seg-canvas, #glow-canvas, #ui-layer {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    #webcam {
+      object-fit: cover;
+      z-index: 1;
+      transform: scaleX(-1); /* mirror for natural selfie view */
+    }
+
+    #seg-canvas {
+      z-index: 2;
+      pointer-events: none;
+      transform: scaleX(-1); /* match mirrored video */
+    }
+
+    #glow-canvas {
+      z-index: 2;
+      pointer-events: none;
+      transform: scaleX(-1);
+      mix-blend-mode: screen;
+    }
+
+    #drain-overlay {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 2;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      background: radial-gradient(ellipse at center,
+        rgba(255, 255, 0, 0.18) 0%,
+        rgba(255, 200, 0, 0.06) 60%,
+        transparent 100%);
+    }
+
+    #ui-layer {
+      z-index: 3;
+      pointer-events: none;
+    }
+
+    /* ── Monitoring panel ─────────────────────────────────────── */
+    #monitor-panel {
+      position: absolute;
+      top: 24px;
+      left: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .monitor-row {
+      background: var(--navy);
+      color: var(--light);
+      font-family: var(--mono);
+      font-size: clamp(0.5rem, 0.88vw, 0.8rem);
+      letter-spacing: var(--ls);
+      font-weight: 400;
+      padding: 0.3em 0.72em;
+      white-space: nowrap;
+    }
+
+    .monitor-header {
+      font-size: clamp(0.55rem, 0.98vw, 0.88rem);
+      letter-spacing: 0.03em;
+    }
+
+    /* ── Keyring sprites ──────────────────────────────────────── */
+    #keyring-layer { position: absolute; inset: 0; }
+
+    .kr-sprite {
+      position: absolute;
+      pointer-events: none;
+    }
+
+    /* Image wrapper */
+    .kr-img-wrap {
+      position: relative;
+      width: clamp(176px, 21.6vw, 324px);
+      transition: filter 0.2s ease;
+    }
+
+    /* idle 이미지 — in-flow로 wrapper 높이 결정 */
+    .img-idle {
+      display: block;
+      width: 100%;
+      height: auto;
+      transition: opacity 0.1s ease;
+    }
+
+    /* active 이미지 — idle 위에 겹쳐서 표시 */
+    .img-active {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%;
+      height: 100%;
+      transition: opacity 0.1s ease;
+      opacity: 0;
+    }
+
+    /* 달라붙을 때: 이미지 크로스페이드 + 네온 노란 glow */
+    .kr-img-wrap.attacking {
+      filter: drop-shadow(0 0 8px rgba(255, 255, 0, 0.9))
+              drop-shadow(0 0 16px rgba(255, 255, 0, 0.6))
+              brightness(1.25);
+    }
+    .kr-img-wrap.attacking .img-idle   { opacity: 0; }
+    .kr-img-wrap.attacking .img-active { opacity: 1; }
+
+    /* ── Speech bubble (타원형, talk-03.svg style) ────────────── */
+    /*
+      border-radius: 50% = 박스 크기에 맞춰지는 진짜 타원.
+      짧은 텍스트 → 원형에 가깝게, 긴 텍스트 → 납작한 타원형으로 늘어남.
+    */
+    .speech-bubble {
+      /* position: fixed → 뷰포트 기준 clampBubblePosition()이 left/top 직접 세팅 */
+      position: fixed;
+      z-index: 10;
+      background: white;
+      border: 1.5px solid #202020;
+      border-radius: 50%;
+      padding: 21px 52px;        /* ×0.9 */
+      display: inline-block;
+      text-align: center;
+      box-shadow: 2px 4px 6px rgba(0, 0, 0, 0.25);
+      white-space: normal;
+      max-width: 259px;          /* ×0.9 */
+      min-width: 80px;
+      font-family: var(--mono);
+      font-size: clamp(0.77rem, 1.32vw, 1.17rem); /* ×0.9 */
+      letter-spacing: var(--ls);
+      color: var(--black);
+      line-height: 1.45;
+      opacity: 0;
+      transition: opacity 0.5s ease;
+    }
+
+    /*
+      꼬리 — 좌측 하단 방향.
+      border-top H > |bottom| B 이어야 삼각형 상단(뿌리)이 타원 내부와 겹쳐
+      이음새 없이 붙은 것처럼 보임.
+      (H - B) ≈ 8px 여유 → border-radius:50% 곡선 gap 보정.
+      ::before = 어두운 테두리, ::after = 흰색 채움 (2px 오른쪽 오프셋).
+    */
+    .speech-bubble::before {
+      content: '';
+      position: absolute;
+      bottom: var(--tail-b, -22px);
+      left: 65px;
+      width: 0;
+      height: 0;
+      border-right: 13px solid transparent; /* ×0.9 */
+      border-top: 28px solid #202020;       /* ×0.9 */
+    }
+
+    .speech-bubble::after {
+      content: '';
+      position: absolute;
+      bottom: var(--tail-b-after, -18px);
+      left: 67px;
+      width: 0;
+      height: 0;
+      border-right: 12px solid transparent; /* ×0.9 */
+      border-top: 24px solid white;          /* ×0.9 */
+    }
+
+    /* Active bubble — 네온 노란 glow */
+    .kr-sprite.active .speech-bubble {
+      border-color: rgba(255, 255, 0, 0.9);
+      box-shadow: 0 0 8px rgba(255, 255, 0, 0.9),
+                  0 0 20px rgba(255, 255, 0, 0.6),
+                  2px 4px 6px rgba(0, 0, 0, 0.25);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Layer 1: webcam -->
+  <video id="webcam" autoplay playsinline muted></video>
+
+  <!-- Layer 2: particles -->
+  <canvas id="seg-canvas"></canvas>
+
+  <!-- Layer 2b: neon glow outline during attach -->
+  <canvas id="glow-canvas"></canvas>
+
+  <!-- Layer 2c: full-body yellow drain overlay -->
+  <div id="drain-overlay"></div>
+
+  <!-- Layer 3: UI -->
+  <div id="ui-layer">
+
+    <!-- Monitoring panel — top left -->
+    <div id="monitor-panel">
+      <div class="monitor-row monitor-header">Cuteness Report Center</div>
+      <div class="monitor-row" id="mon-cuteness">CUTENESS LEVEL: SCANNING...</div>
+      <div class="monitor-row">SUBJECTS DETECTED: 1</div>
+      <div class="monitor-row" id="mon-proximity">KEYRING PROXIMITY: ░░░░░</div>
+      <div class="monitor-row" id="mon-vuln">VULNERABILITY INDEX: MEASURING...</div>
+      <div class="monitor-row">CRC OBSERVATION UNIT 01</div>
+    </div>
+
+    <!-- Keyrings injected by JS -->
+    <div id="keyring-layer"></div>
+
+  </div>
+
+  <!-- MediaPipe CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+
+  <script>
+  /* ═══════════════════════════════════════════════════════════
+     CONFIG
+  ═══════════════════════════════════════════════════════════ */
+  const IDLE_TEXTS = [
+    'Where is cuteness?',
+    'where is the person who I can steal their cuteness...',
+    'cuteness...',
+  ];
+  const ACTIVE_TEXTS = [
+    'Steal it !!',
+    'Typo mistake !!',
+    'There is cuteness!',
+    'They are cutest when they make mistakes.',
+  ];
+  const ATTACH_DURATION_MS = 2500;
+
+  /*
+    bxR / byR : base position as fraction of viewport (clamped inside screen)
+    fqX / fqY : float frequency (rad/s)
+    phX / phY : float phase offset
+    ampX / ampY : float amplitude (px)
+  */
+  const KR_CONFIGS = [
+    { img: 1, bxR: 0.08, byR: 0.28, fqX: 0.70, fqY: 0.55, phX: 0.0, phY: 1.0, ampX: 18, ampY: 14 },
+    { img: 2, bxR: 0.84, byR: 0.18, fqX: 1.10, fqY: 0.80, phX: 2.0, phY: 0.5, ampX: 22, ampY: 18 },
+    { img: 3, bxR: 0.06, byR: 0.65, fqX: 0.90, fqY: 0.65, phX: 1.0, phY: 3.0, ampX: 16, ampY: 20 },
+    { img: 4, bxR: 0.82, byR: 0.60, fqX: 0.80, fqY: 0.70, phX: 0.5, phY: 2.0, ampX: 20, ampY: 16 },
+    { img: 5, bxR: 0.48, byR: 0.10, fqX: 1.20, fqY: 0.90, phX: 3.0, phY: 1.5, ampX: 14, ampY: 22 },
+    { img: 6, bxR: 0.46, byR: 0.80, fqX: 0.60, fqY: 1.10, phX: 1.5, phY: 0.0, ampX: 24, ampY: 14 },
+    { img: 7, bxR: 0.24, byR: 0.44, fqX: 1.00, fqY: 0.75, phX: 2.5, phY: 2.5, ampX: 18, ampY: 18 },
+  ];
+
+  /* ═══════════════════════════════════════════════════════════
+     DOM REFS
+  ═══════════════════════════════════════════════════════════ */
+  const videoEl   = document.getElementById('webcam');
+  const segCanvas = document.getElementById('seg-canvas');
+  const segCtx    = segCanvas.getContext('2d');
+  const krLayer   = document.getElementById('keyring-layer');
+
+  /* Offscreen canvas for mask pixel extraction */
+  const offCanvas = document.createElement('canvas');
+  const offCtx    = offCanvas.getContext('2d');
+
+  /* ═══════════════════════════════════════════════════════════
+     STATE
+  ═══════════════════════════════════════════════════════════ */
+  const S = { IDLE: 0, ACTIVE: 1, RETURNING: 2 };
+
+  let krData            = [];   // runtime keyring objects
+  let boundaryPoints    = [];   // normalised {x,y} person-boundary pts
+  let particles         = [];   // drain particles
+  let isActive          = false;
+  let usesFallbackTargets = false; // true when no boundary pts at attach time
+  let activeTimer         = null;
+  let bubbleTimer         = null; // 7초 말풍선 교체 인터벌
+  let _glowFlickerTimeout = null;
+  let _glowScale          = 1.0; // 불규칙 깜빡임 강도 (0.4~1.2)
+  let activeBubbleKrs   = [];   // 현재 말풍선이 표시 중인 3개 kr 객체
+  let lastTime          = 0;
+  let frameCount        = 0;
+
+  /* ═══════════════════════════════════════════════════════════
+     UTILITY
+  ═══════════════════════════════════════════════════════════ */
+  const rand    = arr => arr[Math.floor(Math.random() * arr.length)];
+  const lerp    = (a, b, t) => a + (b - a) * t;
+  const clampV  = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+  /*
+    타원 경계선 공식으로 꼬리 bottom 값을 정확히 계산.
+
+    border-radius:50% 타원의 방정식: (x/rx)² + (y/ry)² = 1
+    꼬리 left=72px 위치에서 타원 하단 경계의 y 좌표:
+      xc = tailLeft - rx        (중심으로부터 x 거리)
+      y_ellipse = ry * sqrt(1 - (xc/rx)²)   (중심으로부터 아래 거리)
+    박스 하단에서 타원 경계까지의 gap = ry - y_ellipse
+    꼬리 삼각형(border-top=42)의 base가 타원 경계에 닿으려면:
+      B = tailHeight - gap  →  bottom = -B
+  */
+  function updateTailPosition(bubble) {
+    const w = bubble.offsetWidth;
+    const h = bubble.offsetHeight;
+    if (!w || !h) return;
+
+    const rx         = w / 2;
+    const ry         = h / 2;
+    const tailLeft   = 65;   /* ::before left 값 (×0.9) */
+    const tailHeight = 28;   /* ::before border-top 값 (×0.9) */
+
+    const xc      = tailLeft - rx;
+    const sqrtVal = Math.sqrt(Math.max(0, 1 - (xc / rx) * (xc / rx)));
+    const gap     = ry - ry * sqrtVal;   /* 박스 하단 ~ 타원 경계 거리 */
+    const B       = tailHeight - gap;    /* 필요한 겹침 확보 */
+
+    bubble.style.setProperty('--tail-b',       `-${B}px`);
+    bubble.style.setProperty('--tail-b-after', `-${B - 4}px`);
+  }
+
+  /* 말풍선(position:fixed)을 키링 위에 배치하되 화면 밖으로 나가지 않도록 클램핑 */
+  function clampBubblePosition(kr) {
+    const bubble  = kr.bubble;
+    const screenW = window.innerWidth;
+    const screenH = window.innerHeight;
+    const bW      = bubble.offsetWidth;
+    const bH      = bubble.offsetHeight;
+    const imgW    = kr.wrap.offsetWidth  || 80;
+    const imgH    = kr.wrap.offsetHeight || 110;
+
+    /* 기본 위치: 키링 중앙 위 */
+    const krCx = kr.cx + imgW / 2;
+    let bLeft  = krCx - bW / 2;
+    let bTop   = kr.cy - bH - 20;
+
+    /* 좌·우 경계 */
+    if (bLeft < 10)                   bLeft = 10;
+    if (bLeft + bW > screenW - 10)    bLeft = screenW - bW - 10;
+    /* 상단 경계 → 키링 아래로 */
+    if (bTop < 10)                    bTop  = kr.cy + imgH + 20;
+    /* 하단 경계 */
+    if (bTop + bH > screenH - 10)    bTop  = screenH - bH - 10;
+
+    bubble.style.left = `${bLeft}px`;
+    bubble.style.top  = `${bTop}px`;
+  }
+
+  /* 화면 경계만 클램핑 — keyring 기준 재계산 없이 현재 위치에서 bound만 처리 */
+  function clampToScreen(bubble) {
+    const screenW = window.innerWidth;
+    const screenH = window.innerHeight;
+    const bW = bubble.offsetWidth;
+    const bH = bubble.offsetHeight;
+    let l = parseFloat(bubble.style.left) || 0;
+    let t = parseFloat(bubble.style.top)  || 0;
+    if (l < 10)               l = 10;
+    if (l + bW > screenW - 10) l = screenW - bW - 10;
+    if (t < 10)               t = 10;
+    if (t + bH > screenH - 10) t = screenH - bH - 10;
+    bubble.style.left = `${l}px`;
+    bubble.style.top  = `${t}px`;
+  }
+
+  /* 3개 말풍선 겹침 해소 — 겹치는 쌍의 두 번째 버블을 밀어냄 */
+  function resolveOverlaps(krs) {
+    const pad = 16;
+    for (let i = 0; i < krs.length; i++) {
+      for (let j = i + 1; j < krs.length; j++) {
+        const a = krs[i].bubble.getBoundingClientRect();
+        const b = krs[j].bubble.getBoundingClientRect();
+        const overlapX = (a.left + a.width  + pad) - b.left;
+        const overlapY = (a.top  + a.height + pad) - b.top;
+        if (overlapX > 0 && overlapY > 0) {
+          /* 수직 겹침이 수평보다 작으면 수직으로, 아니면 수평으로 밀기 */
+          if (Math.abs(overlapY) < Math.abs(overlapX)) {
+            krs[j].bubble.style.top  = `${parseFloat(krs[j].bubble.style.top)  || 0 + overlapY / 2}px`;
+          } else {
+            krs[j].bubble.style.left = `${parseFloat(krs[j].bubble.style.left) || 0 + overlapX / 2}px`;
+          }
+          clampToScreen(krs[j].bubble); /* 밀고 난 뒤 화면 경계 재확인 */
+        }
+      }
+    }
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     BUILD KEYRINGS
+  ═══════════════════════════════════════════════════════════ */
+  function buildKeyrings() {
+    const vw = window.innerWidth, vh = window.innerHeight;
+
+    KR_CONFIGS.forEach((cfg, idx) => {
+      /* Container */
+      const el = document.createElement('div');
+      el.className = 'kr-sprite';
+
+      /* Image wrapper */
+      const wrap = document.createElement('div');
+      wrap.className = 'kr-img-wrap';
+
+      /* Idle image — in-flow, sets wrapper height */
+      const idleImg = document.createElement('img');
+      idleImg.className = 'img-idle';
+      idleImg.alt       = '';
+      idleImg.src       = `assets/keyring-0${cfg.img}-idle.png`;
+
+      /* Active image — absolute overlay, shown on .attacking */
+      const activeImg = document.createElement('img');
+      activeImg.className = 'img-active';
+      activeImg.alt       = '';
+      activeImg.src       = `assets/keyring-0${cfg.img}-active.png`;
+
+      wrap.appendChild(idleImg);
+      wrap.appendChild(activeImg);
+
+      /* Speech bubble — 초기에는 숨김, assignBubbles()가 3개를 골라 표시 */
+      const bubble = document.createElement('div');
+      bubble.className            = 'speech-bubble';
+      bubble.textContent          = IDLE_TEXTS[0];
+      bubble.style.pointerEvents  = 'none';
+
+      el.appendChild(wrap);
+      el.appendChild(bubble);
+      krLayer.appendChild(el);
+
+      /* 생성 직후 한 프레임 뒤에 측정 (레이아웃 완료 후) */
+      requestAnimationFrame(() => updateTailPosition(bubble));
+
+      const bx = cfg.bxR * vw;
+      const by = cfg.byR * vh;
+
+      krData.push({
+        el, wrap, bubble, cfg,
+        bx, by,
+        cx: bx, cy: by, /* current position */
+        tx: bx, ty: by, /* target position  */
+        state: S.IDLE,
+      });
+    });
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     WEBCAM
+  ═══════════════════════════════════════════════════════════ */
+  async function startWebcam() {
+    try {
+      /* 권한 먼저 획득 — 이후 enumerateDevices에서 label이 채워짐 */
+      await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+
+      const devices     = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter(d => d.kind === 'videoinput');
+
+      console.log('사용 가능한 카메라:');
+      videoDevices.forEach((d, i) => console.log(i, d.label, d.deviceId));
+
+      /* 내장 카메라 제외 → 외부(HP) 카메라 선택
+         없으면 목록 마지막 장치(보통 외부) 사용 */
+      const external = videoDevices.find(d => {
+        const l = d.label.toLowerCase();
+        return !l.includes('facetime') &&
+               !l.includes('built-in') &&
+               !l.includes('내장');
+      }) || videoDevices[videoDevices.length - 1];
+
+      console.log('선택된 카메라:', external?.label);
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          deviceId: { exact: external.deviceId },
+          width:    { ideal: 1280 },
+          height:   { ideal: 720 },
+          frameRate: { ideal: 30 },
+        },
+        audio: false,
+      });
+      videoEl.srcObject = stream;
+      await videoEl.play();
+    } catch (err) {
+      console.warn('Webcam unavailable:', err);
+    }
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     MEDIAPIPE SEGMENTATION
+  ═══════════════════════════════════════════════════════════ */
+  let segmentation = null;
+
+  /* 마스크에서 사람 윤곽 포인트 추출 — 시각적 화면 좌표(px) 반환 */
+  function extractContourPoints(mask) {
+    const mw = mask.width, mh = mask.height;
+    offCanvas.width  = mw;
+    offCanvas.height = mh;
+    offCtx.drawImage(mask, 0, 0, mw, mh);
+    const data   = offCtx.getImageData(0, 0, mw, mh).data;
+    const points = [];
+    const step   = 6;
+    const scaleX = window.innerWidth  / mw;
+    const scaleY = window.innerHeight / mh;
+
+    for (let y = step; y < mh - step; y += step) {
+      for (let x = step; x < mw - step; x += step) {
+        const alpha = data[(y * mw + x) * 4 + 3];
+        if (alpha > 150) {
+          const top    = data[((y - step) * mw + x)      * 4 + 3];
+          const bottom = data[((y + step) * mw + x)      * 4 + 3];
+          const left   = data[(y * mw + (x - step))      * 4 + 3];
+          const right  = data[(y * mw + (x + step))      * 4 + 3];
+          if (top < 150 || bottom < 150 || left < 150 || right < 150) {
+            /* X 반전: CSS scaleX(-1) 미러 영상과 좌표 일치 */
+            points.push({ x: window.innerWidth - x * scaleX, y: y * scaleY });
+          }
+        }
+      }
+    }
+    return points;
+  }
+
+  function initSegmentation() {
+    if (typeof SelfieSegmentation === 'undefined') return;
+
+    segmentation = new SelfieSegmentation({
+      locateFile: f =>
+        `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${f}`,
+    });
+    segmentation.setOptions({
+      modelSelection: 1,   /* 전신 인식에 더 정확 */
+      selfieMode: false,   /* 외부 카메라 — 미러링 없음 */
+    });
+    segmentation.onResults(onSegResults);
+
+    /* Camera util 대신 RAF 기반 30fps 제어 */
+    let lastSegTime = 0;
+    function segLoop(ts) {
+      if (ts - lastSegTime > 33) { /* ~30fps */
+        segmentation.send({ image: videoEl }).catch(() => {});
+        lastSegTime = ts;
+      }
+      requestAnimationFrame(segLoop);
+    }
+    requestAnimationFrame(segLoop);
+  }
+
+  /* 30~80ms 불규칙 간격으로 glow 강도 변화 */
+  function startGlowFlicker() {
+    function tick() {
+      if (!isActive) { _glowScale = 1.0; return; }
+      _glowScale = 0.45 + Math.random() * 0.75;
+      _glowFlickerTimeout = setTimeout(tick, 30 + Math.random() * 50);
+    }
+    tick();
+  }
+  function stopGlowFlicker() {
+    clearTimeout(_glowFlickerTimeout);
+    _glowFlickerTimeout = null;
+    _glowScale = 1.0;
+  }
+
+  function onSegResults(results) {
+    if (!results.segmentationMask) return;
+
+    const pts = extractContourPoints(results.segmentationMask);
+    if (pts.length > 8) boundaryPoints = pts;
+
+    /* ── 3레이어 노란 네온 glow: attach 중에만 표시 ── */
+    const glowCanvas = document.getElementById('glow-canvas');
+    if (!glowCanvas) return;
+    const gCtx = glowCanvas.getContext('2d');
+    const W = window.innerWidth, H = window.innerHeight;
+
+    if (isActive) {
+      if (glowCanvas.width !== W || glowCanvas.height !== H) {
+        glowCanvas.width = W; glowCanvas.height = H;
+      }
+      gCtx.clearRect(0, 0, W, H);
+      const s = _glowScale;
+
+      /* 1차 — 넓은 외곽 glow */
+      gCtx.save();
+      gCtx.shadowBlur  = 60;
+      gCtx.shadowColor = 'rgba(255, 230, 0, 1)';
+      gCtx.globalAlpha = Math.min(1, (0.5 + Math.random() * 0.3) * s);
+      gCtx.drawImage(results.segmentationMask, 0, 0, W, H);
+      gCtx.restore();
+
+      /* 2차 — 중간 glow */
+      gCtx.save();
+      gCtx.shadowBlur  = 35;
+      gCtx.shadowColor = 'rgba(255, 255, 100, 1)';
+      gCtx.globalAlpha = Math.min(1, (0.6 + Math.random() * 0.3) * s);
+      gCtx.drawImage(results.segmentationMask, 0, 0, W, H);
+      gCtx.restore();
+
+      /* 3차 — 선명한 내부 glow */
+      gCtx.save();
+      gCtx.shadowBlur  = 15;
+      gCtx.shadowColor = 'rgba(255, 255, 200, 1)';
+      gCtx.globalAlpha = Math.min(1, (0.7 + Math.random() * 0.2) * s);
+      gCtx.drawImage(results.segmentationMask, 0, 0, W, H);
+      gCtx.restore();
+
+      /* 내부 fill 제거 → 윤곽 glow만 남김 */
+      gCtx.save();
+      gCtx.globalCompositeOperation = 'destination-out';
+      gCtx.drawImage(results.segmentationMask, 0, 0, W, H);
+      gCtx.restore();
+    } else {
+      gCtx.clearRect(0, 0, glowCanvas.width || W, glowCanvas.height || H);
+    }
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     PARTICLE DRAIN EFFECT
+  ═══════════════════════════════════════════════════════════ */
+  function personCenter() {
+    if (!boundaryPoints.length) {
+      return { x: window.innerWidth * 0.5, y: window.innerHeight * 0.5 };
+    }
+    const sx = boundaryPoints.reduce((s, p) => s + p.x, 0) / boundaryPoints.length;
+    const sy = boundaryPoints.reduce((s, p) => s + p.y, 0) / boundaryPoints.length;
+    return { x: sx, y: sy };
+  }
+
+  /* 달라붙는 순간 — 사람 중심 → 키링 방향 초기 버스트 (흰/파 파티클) */
+  function spawnParticles(from, toX, toY) {
+    for (let i = 0; i < 20; i++) {
+      const mx = lerp(from.x, toX, 0.5) + (Math.random() - 0.5) * 120;
+      const my = lerp(from.y, toY, 0.5) + (Math.random() - 0.5) * 120;
+      particles.push({
+        sx: from.x + (Math.random() - 0.5) * 50,
+        sy: from.y + (Math.random() - 0.5) * 50,
+        mx, my,
+        ex: toX, ey: toY,
+        t:   0,
+        spd: 0.35 + Math.random() * 0.4,
+        r:   1.5  + Math.random() * 2,
+        white: Math.random() > 0.4,
+        drain: false,
+      });
+    }
+  }
+
+  /* 4초 내내 지속되는 노란 드레인 파티클 — 윤곽 → 키링 */
+  const DRAIN_COLORS = ['rgba(255,255,0,', 'rgba(255,230,50,', 'rgba(255,200,0,'];
+  function spawnDrainParticle(sx, sy, ex, ey) {
+    const mx = lerp(sx, ex, 0.5) + (Math.random() - 0.5) * 80;
+    const my = lerp(sy, ey, 0.5) + (Math.random() - 0.5) * 80;
+    particles.push({
+      sx, sy, mx, my, ex, ey,
+      t:     0,
+      spd:   0.4 + Math.random() * 0.4,
+      r:     3   + Math.random() * 2,
+      color: DRAIN_COLORS[Math.floor(Math.random() * DRAIN_COLORS.length)],
+      drain: true,
+    });
+  }
+
+  function drawParticles(ctx, dt) {
+    /* ─ 드레인 파티클 (노란색, 강한 glow) ─ */
+    ctx.save();
+    ctx.shadowColor = 'rgba(255, 230, 0, 1)';
+    ctx.shadowBlur  = 20;
+    particles.filter(p => p.drain).forEach(p => {
+      const u = 1 - p.t;
+      const x = u*u*p.sx + 2*u*p.t*p.mx + p.t*p.t*p.ex;
+      const y = u*u*p.sy + 2*u*p.t*p.my + p.t*p.t*p.ey;
+      const a = Math.sin(p.t * Math.PI);
+      ctx.beginPath();
+      ctx.arc(x, y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = p.color + `${a})`;
+      ctx.fill();
+    });
+    ctx.restore();
+
+    /* ─ 초기 버스트 파티클 (흰/파란색) ─ */
+    ctx.save();
+    ctx.shadowColor = 'rgba(160,210,255,0.8)';
+    ctx.shadowBlur  = 10;
+    particles.filter(p => !p.drain).forEach(p => {
+      const u = 1 - p.t;
+      const x = u*u*p.sx + 2*u*p.t*p.mx + p.t*p.t*p.ex;
+      const y = u*u*p.sy + 2*u*p.t*p.my + p.t*p.t*p.ey;
+      const a = Math.sin(p.t * Math.PI);
+      ctx.beginPath();
+      ctx.arc(x, y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = p.white ? `rgba(255,255,255,${a})` : `rgba(180,220,255,${a})`;
+      ctx.fill();
+    });
+    ctx.restore();
+
+    particles.forEach(p => { p.t += dt * p.spd * 0.45; });
+    particles = particles.filter(p => p.t < 1);
+  }
+
+  /* 화면 픽셀 좌표 기반 균등 분포 선택 — 빈 input이면 원형 fallback 반환 */
+  function selectDistributedPoints(points, count) {
+    /* fallback: 포인트 없으면 화면 중앙 원형 배치 */
+    if (points.length === 0) {
+      const cx = window.innerWidth / 2, cy = window.innerHeight * 0.4;
+      const r  = 150;
+      return Array.from({ length: count }, (_, i) => {
+        const a = (i / count) * Math.PI * 2 - Math.PI / 2;
+        return { x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r };
+      });
+    }
+
+    /* 얼굴 영역(상단 30%) 제외 — 화면 픽셀 y > 30%H = 몸통 */
+    const faceThresh = window.innerHeight * 0.3;
+    const bodyPts    = points.filter(p => p.y > faceThresh);
+    const pool       = bodyPts.length >= count ? bodyPts : points;
+
+    const cx = pool.reduce((s, p) => s + p.x, 0) / pool.length;
+    const cy = pool.reduce((s, p) => s + p.y, 0) / pool.length;
+
+    const sorted = pool
+      .map(p => ({ ...p, angle: Math.atan2(p.y - cy, p.x - cx) }))
+      .sort((a, b) => a.angle - b.angle);
+
+    const segSize = Math.floor(sorted.length / count);
+    const result  = [];
+    for (let i = 0; i < count; i++) {
+      const base = i * segSize;
+      const jitter = Math.floor(Math.random() * segSize * 0.4);
+      result.push(sorted[Math.min(base + jitter, sorted.length - 1)]);
+    }
+    return result;
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     BUBBLE ROTATION  (3개 랜덤 선택, 7초마다 교체)
+  ═══════════════════════════════════════════════════════════ */
+  function assignBubbles() {
+    /* 전체 숨기기 */
+    krData.forEach(kr => {
+      kr.bubble.style.opacity      = '0';
+      kr.bubble.style.pointerEvents = 'none';
+    });
+    activeBubbleKrs = [];
+
+    /* 7개 중 랜덤 3개 선택 */
+    const shuffled = [...Array(krData.length).keys()].sort(() => Math.random() - 0.5);
+    const selected = shuffled.slice(0, 3);
+
+    /* 각각 다른 idle 메시지 배정 후 표시 */
+    selected.forEach((krIndex, msgIndex) => {
+      const kr = krData[krIndex];
+      kr.bubble.textContent         = IDLE_TEXTS[msgIndex % IDLE_TEXTS.length];
+      kr.bubble.style.opacity       = '1';
+      kr.bubble.style.pointerEvents = '';
+      activeBubbleKrs.push(kr);
+      requestAnimationFrame(() => updateTailPosition(kr.bubble));
+    });
+
+    /* 배정 직후 위치 계산 + 겹침 해소 (3회) */
+    requestAnimationFrame(() => {
+      activeBubbleKrs.forEach(kr => clampBubblePosition(kr));
+      resolveOverlaps(activeBubbleKrs);
+      resolveOverlaps(activeBubbleKrs);
+      resolveOverlaps(activeBubbleKrs);
+    });
+  }
+
+  function startBubbleRotation() {
+    clearInterval(bubbleTimer);
+    assignBubbles();
+    bubbleTimer = setInterval(assignBubbles, 7000);
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     TRIGGER ATTACH
+     Phase 1 (0-300ms) : 목표 선택 + 말풍선 교체 (키링 부유 유지)
+     Phase 2 (300ms~)  : 돌진 + .attacking + 파티클
+     Phase 3 (4s 후)   : 복귀
+  ═══════════════════════════════════════════════════════════ */
+  function triggerAttach() {
+    if (isActive) return;
+    isActive = true;
+    clearTimeout(activeTimer);
+    clearInterval(bubbleTimer);
+
+    /* ── Phase 1: 목표 포인트 선택 (화면 픽셀 좌표, 형체 전체에 균등 분포) ── */
+    usesFallbackTargets = boundaryPoints.length < krData.length;
+    const selectedPts   = selectDistributedPoints(boundaryPoints, krData.length);
+
+    krData.forEach((kr, i) => {
+      const pt       = selectedPts[i];
+      kr.tx          = pt.x;  /* 이미 화면 픽셀 좌표 */
+      kr.ty          = pt.y;
+      kr.attachAngle = pt.angle; /* fallback이면 undefined */
+
+      /* 말풍선 전체 표시 + active 텍스트 (dash 전에 미리 교체) */
+      kr.el.classList.add('active');
+      kr.bubble.textContent         = rand(ACTIVE_TEXTS);
+      kr.bubble.style.opacity       = '1';
+      kr.bubble.style.pointerEvents = '';
+      requestAnimationFrame(() => updateTailPosition(kr.bubble));
+    });
+
+    /* ── Phase 2: 50ms 후 돌진 시작 ─────────────────────── */
+    setTimeout(() => {
+      const center = personCenter();
+      krData.forEach(kr => {
+        kr.state = S.ACTIVE;
+        kr.wrap.classList.add('attacking');
+        spawnParticles(center, kr.tx, kr.ty);
+      });
+
+      /* overlay + glow flicker 시작 */
+      const overlay = document.getElementById('drain-overlay');
+      if (overlay) overlay.style.opacity = '0.15';
+      startGlowFlicker();
+
+      /* ── Phase 3: 4초 후 복귀 ────────────────────────── */
+      activeTimer = setTimeout(() => {
+        krData.forEach(kr => {
+          kr.state = S.RETURNING;
+          kr.el.classList.remove('active');
+          kr.wrap.classList.remove('attacking');
+        });
+        if (overlay) overlay.style.opacity = '0';
+        stopGlowFlicker();
+        isActive = false;
+        startBubbleRotation();
+      }, ATTACH_DURATION_MS);
+    }, 50);
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     MAIN ANIMATION LOOP
+  ═══════════════════════════════════════════════════════════ */
+  function loop(now) {
+    const dt = Math.min((now - lastTime) / 1000, 0.1); /* seconds, capped */
+    lastTime = now;
+    frameCount++;
+
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    /* Resize canvas to viewport */
+    if (segCanvas.width !== vw || segCanvas.height !== vh) {
+      segCanvas.width  = vw;
+      segCanvas.height = vh;
+    }
+
+    const t = now / 1000; /* seconds since page load */
+
+    /* ── Clear drawing canvas ── */
+    segCtx.clearRect(0, 0, vw, vh);
+
+    /* ── 지속 드레인 스트림: ACTIVE 동안 매 프레임 2~3개 파티클 생성 ── */
+    if (isActive && boundaryPoints.length > 0) {
+      const activeKrs = krData.filter(kr => kr.state === S.ACTIVE);
+      if (activeKrs.length > 0) {
+        const count = 2 + Math.floor(Math.random() * 2);
+        for (let s = 0; s < count; s++) {
+          const src = boundaryPoints[Math.floor(Math.random() * boundaryPoints.length)];
+          const dst = activeKrs[Math.floor(Math.random() * activeKrs.length)];
+          spawnDrainParticle(src.x, src.y, dst.cx, dst.cy);
+        }
+      }
+    }
+
+    /* ── Particles ── */
+    if (particles.length > 0) {
+      drawParticles(segCtx, dt);
+    }
+
+    /* 경계 포인트 중심 (화면 픽셀) — ACTIVE 추적에 사용 */
+    let bCx = window.innerWidth * 0.5, bCy = window.innerHeight * 0.5;
+    if (boundaryPoints.length > 0) {
+      bCx = boundaryPoints.reduce((s, p) => s + p.x, 0) / boundaryPoints.length;
+      bCy = boundaryPoints.reduce((s, p) => s + p.y, 0) / boundaryPoints.length;
+    }
+
+    /* ── Keyring positions ── */
+    krData.forEach(kr => {
+      const { cfg, bx, by } = kr;
+
+      if (kr.state === S.IDLE) {
+        kr.cx = bx + Math.sin(t * cfg.fqX + cfg.phX) * cfg.ampX;
+        kr.cy = by + Math.cos(t * cfg.fqY + cfg.phY) * cfg.ampY;
+      } else if (kr.state === S.ACTIVE) {
+        /* 실시간 윤곽 추적: 저장된 각도에 가장 가까운 경계 포인트로 목표 갱신 */
+        if (!usesFallbackTargets && boundaryPoints.length >= 10 && kr.attachAngle !== undefined) {
+          const sample = Math.max(1, Math.floor(boundaryPoints.length / 30));
+          let bestPt = null, bestDist = Infinity;
+          for (let k = 0; k < boundaryPoints.length; k += sample) {
+            const p = boundaryPoints[k];
+            const a = Math.atan2(p.y - bCy, p.x - bCx);
+            let d   = Math.abs(a - kr.attachAngle);
+            if (d > Math.PI) d = 2 * Math.PI - d;
+            if (d < bestDist) { bestDist = d; bestPt = p; }
+          }
+          if (bestPt) {
+            kr.tx = bestPt.x; /* 이미 화면 픽셀 좌표 */
+            kr.ty = bestPt.y;
+          }
+        }
+        kr.cx = lerp(kr.cx, kr.tx, 0.22);
+        kr.cy = lerp(kr.cy, kr.ty, 0.22);
+      } else { /* RETURNING */
+        const ix = bx + Math.sin(t * cfg.fqX + cfg.phX) * cfg.ampX;
+        const iy = by + Math.cos(t * cfg.fqY + cfg.phY) * cfg.ampY;
+        kr.cx = lerp(kr.cx, ix, 0.09);
+        kr.cy = lerp(kr.cy, iy, 0.09);
+        if (Math.abs(kr.cx - ix) < 4 && Math.abs(kr.cy - iy) < 4) {
+          kr.state = S.IDLE;
+        }
+      }
+
+      /* Clamp within viewport */
+      const imgW = kr.wrap.offsetWidth  || 80;
+      const imgH = kr.wrap.offsetHeight || 110;
+      kr.cx = clampV(kr.cx, 0, vw - imgW);
+      kr.cy = clampV(kr.cy, 60, vh - imgH); /* 60px top clearance for monitor panel */
+
+      kr.el.style.left = `${kr.cx}px`;
+      kr.el.style.top  = `${kr.cy}px`;
+      clampBubblePosition(kr); /* 말풍선 위치를 키링에 맞춰 매 프레임 갱신 */
+    });
+
+    /* idle 상태에서만 겹침 해소 (active 중에는 키링들이 흩어지므로 불필요) */
+    if (!isActive && activeBubbleKrs.length > 1) {
+      resolveOverlaps(activeBubbleKrs);
+      resolveOverlaps(activeBubbleKrs);
+    }
+
+    requestAnimationFrame(loop);
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     MONITORING PANEL ANIMATIONS
+  ═══════════════════════════════════════════════════════════ */
+  const VULN_POOL = ['MEASURING...', 'LOW', 'LOW', 'ELEVATED', 'ELEVATED', 'CRITICAL'];
+
+  function updateMonitor() {
+    /* Cuteness level */
+    const monC = document.getElementById('mon-cuteness');
+    monC.textContent = Math.random() > 0.3
+      ? `CUTENESS LEVEL: ${Math.floor(Math.random() * 100)}%`
+      : 'CUTENESS LEVEL: SCANNING...';
+
+    /* Proximity blocks */
+    const n = Math.floor(Math.random() * 6);
+    document.getElementById('mon-proximity').textContent =
+      `KEYRING PROXIMITY: ${'█'.repeat(n)}${'░'.repeat(5 - n)}`;
+
+    /* Vulnerability index */
+    document.getElementById('mon-vuln').textContent =
+      `VULNERABILITY INDEX: ${rand(VULN_POOL)}`;
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     BROADCAST CHANNEL  (receives signal from screen2)
+  ═══════════════════════════════════════════════════════════ */
+  const channel = new BroadcastChannel('cuteness-report');
+  channel.onmessage = e => {
+    if (e.data.type === 'backspace') {
+      console.log('[screen1] backspace 신호 수신 → triggerAttach()');
+      triggerAttach();
+    }
+  };
+
+  /* ── B키 테스트 트리거 (screen2 연동 전 개발용) ─────────── */
+  document.addEventListener('keydown', e => {
+    if (e.key === 'b' || e.key === 'B') triggerAttach();
+  });
+
+  /* ═══════════════════════════════════════════════════════════
+     INIT
+  ═══════════════════════════════════════════════════════════ */
+  async function init() {
+    buildKeyrings();
+    await startWebcam();
+    initSegmentation();
+    setInterval(updateMonitor, 500);
+    lastTime = performance.now();
+    requestAnimationFrame(loop);
+    /* DOM 렌더링 완료 후 말풍선 회전 시작 */
+    requestAnimationFrame(() => startBubbleRotation());
+  }
+
+  init();
+  </script>
+</body>
+</html>
