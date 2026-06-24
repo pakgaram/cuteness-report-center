@@ -569,9 +569,10 @@
 
     /* ── QR code ─────────────────────────────── */
     document.getElementById('qr-btn').addEventListener('click', () => {
-      const encoded = btoa(JSON.stringify(mistakeLetters));
-      const target  = `result.html?data=${encodeURIComponent(encoded)}`;
-      const qrUrl   = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(target)}`;
+      const encoded    = btoa(JSON.stringify(mistakeLetters));
+      const data       = encodeURIComponent(encoded);
+      const resultUrl  = `https://pakgaram.github.io/cuteness-report-center/result.html?data=${data}`;
+      const qrUrl      = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(resultUrl)}`;
       document.getElementById('qr-img').src = qrUrl;
       document.getElementById('qr-modal').classList.add('open');
     });
