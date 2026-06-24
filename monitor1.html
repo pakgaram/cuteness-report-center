@@ -1,0 +1,1067 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CRC — Monitor 01</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --navy:  #141497;
+      --light: #F3F3F3;
+      --white: #FFFFFF;
+      --black: #000000;
+      --mono:  'Input Mono', 'Courier New', Courier, monospace;
+      --fs:    clamp(0.73rem, 1.47vw, 2.1rem);
+      --ls:    -0.06em;
+    }
+
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+
+    /* ── 래퍼 ──────────────────────────────────────────────────── */
+    #landing-wrapper {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      background: var(--navy);
+      overflow-y: auto;
+      color: var(--light);
+      font-family: var(--mono);
+      font-size: var(--fs);
+      letter-spacing: var(--ls);
+      font-weight: 400;
+    }
+
+    #screen1-wrapper {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    /* ════════════════════════════════════════════
+       LANDING 스타일  (index.html)
+    ════════════════════════════════════════════ */
+    .header-badge {
+      display: inline-block;
+      background: var(--light);
+      color: var(--navy);
+      font-family: var(--mono);
+      font-size: var(--fs);
+      letter-spacing: var(--ls);
+      font-weight: 400;
+      line-height: 1.2;
+      padding: 0.12em 0.38em;
+      white-space: nowrap;
+      margin-bottom: 1.6em;
+    }
+
+    #content {
+      position: relative;
+      z-index: 10;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: max(40px, calc(50vh - 9.5em)) 5% 22vh;
+    }
+
+    #text-block { max-width: 54ch; width: 100%; }
+
+    .text-line {
+      display: block;
+      line-height: 1.58;
+      white-space: pre-wrap;
+    }
+
+    .cursor {
+      display: inline-block;
+      width: 0.55em;
+      height: 0.82em;
+      background: var(--light);
+      vertical-align: bottom;
+      margin-bottom: 0.07em;
+      margin-left: 0.06em;
+      animation: blink 1s step-end infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0; }
+    }
+
+    /* 키링 실루엣 (랜딩용, #k1~#k7) */
+    .keyring-silhouette {
+      position: fixed;
+      z-index: 1;
+      opacity: 0;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    @keyframes kr-reveal {
+      0%   { opacity: 0;    filter: blur(42px) brightness(0.20); }
+      12%  { opacity: 0.12; filter: blur(34px) brightness(0.24); }
+      40%  { opacity: 0.38; filter: blur(20px) brightness(0.30); }
+      72%  { opacity: 0.60; filter: blur(11px) brightness(0.37); }
+      100% { opacity: 0.78; filter: blur(6px)  brightness(0.44); }
+    }
+
+    .keyring-silhouette.reveal {
+      animation: kr-reveal 17s ease-out forwards;
+    }
+
+    #k1 { left: -4%;  bottom: 4%;  width: 19%; }
+    #k2 { left: 59%;  bottom: 0%;  width: 19%; }
+    #k3 { left:  7%;  bottom: 0%;  width: 19%; }
+    #k4 { left: 86%;  bottom: 5%;  width: 19%; }
+    #k5 { left: 23%;  bottom: 3%;  width: 19%; }
+    #k6 { left: 41%;  bottom: 0%;  width: 19%; }
+    #k7 { left: 74%;  bottom: 2%;  width: 19%; }
+
+    /* ════════════════════════════════════════════
+       SCREEN1 스타일  (screen1.html)
+    ════════════════════════════════════════════ */
+    #webcam, #seg-canvas, #glow-canvas, #ui-layer {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    #webcam {
+      object-fit: cover;
+      z-index: 1;
+      transform: scaleX(-1);
+    }
+
+    #seg-canvas {
+      z-index: 2;
+      pointer-events: none;
+      transform: scaleX(-1);
+    }
+
+    #glow-canvas {
+      z-index: 2;
+      pointer-events: none;
+      mix-blend-mode: screen;
+      transform: scaleX(-1);
+    }
+
+    #drain-overlay {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 2;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      background: radial-gradient(ellipse at center,
+        rgba(255, 255, 0, 0.18) 0%,
+        rgba(255, 230, 0, 0.06) 60%,
+        transparent 100%);
+    }
+
+    #ui-layer { z-index: 3; pointer-events: none; }
+
+    #monitor-panel {
+      position: absolute;
+      top: 24px;
+      left: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .monitor-row {
+      background: var(--navy);
+      color: var(--light);
+      font-family: var(--mono);
+      font-size: clamp(0.5rem, 0.88vw, 0.8rem);
+      letter-spacing: var(--ls);
+      font-weight: 400;
+      padding: 0.3em 0.72em;
+      white-space: nowrap;
+    }
+
+    .monitor-header {
+      font-size: clamp(0.55rem, 0.98vw, 0.88rem);
+      letter-spacing: 0.03em;
+    }
+
+    #keyring-layer { position: absolute; inset: 0; }
+
+    .kr-sprite { position: absolute; pointer-events: none; }
+
+    .kr-img-wrap {
+      position: relative;
+      width: clamp(176px, 21.6vw, 324px);
+      transition: filter 0.2s ease;
+    }
+
+    .img-idle {
+      display: block;
+      width: 100%;
+      height: auto;
+      transition: opacity 0.1s ease;
+    }
+
+    .img-active {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      transition: opacity 0.1s ease;
+      opacity: 0;
+    }
+
+    .kr-img-wrap.attacking {
+      filter: drop-shadow(0 0 8px rgba(255, 255, 0, 0.9))
+              drop-shadow(0 0 16px rgba(255, 255, 0, 0.6))
+              brightness(1.25);
+    }
+    .kr-img-wrap.attacking .img-idle   { opacity: 0; }
+    .kr-img-wrap.attacking .img-active { opacity: 1; }
+
+    .speech-bubble {
+      position: fixed;
+      z-index: 10;
+      background: white;
+      border: 1.5px solid #202020;
+      border-radius: 50%;
+      padding: 21px 52px;
+      display: inline-block;
+      text-align: center;
+      box-shadow: 2px 4px 6px rgba(0, 0, 0, 0.25);
+      white-space: normal;
+      max-width: 259px;
+      min-width: 80px;
+      font-family: var(--mono);
+      font-size: clamp(0.77rem, 1.32vw, 1.17rem);
+      letter-spacing: var(--ls);
+      color: var(--black);
+      line-height: 1.45;
+      opacity: 0;
+      transition: opacity 0.5s ease;
+    }
+
+    .speech-bubble::before {
+      content: '';
+      position: absolute;
+      bottom: var(--tail-b, -22px);
+      left: 65px;
+      width: 0; height: 0;
+      border-right: 13px solid transparent;
+      border-top: 28px solid #202020;
+    }
+
+    .speech-bubble::after {
+      content: '';
+      position: absolute;
+      bottom: var(--tail-b-after, -18px);
+      left: 67px;
+      width: 0; height: 0;
+      border-right: 12px solid transparent;
+      border-top: 24px solid white;
+    }
+
+    .kr-sprite.active .speech-bubble {
+      border-color: rgba(255, 255, 0, 0.9);
+      box-shadow: 0 0 8px rgba(255, 255, 0, 0.9),
+                  0 0 20px rgba(255, 255, 0, 0.6),
+                  2px 4px 6px rgba(0, 0, 0, 0.25);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ══════════════════════════════════════════════
+       LANDING WRAPPER  (index.html 내용)
+  ══════════════════════════════════════════════ -->
+  <div id="landing-wrapper">
+
+    <!-- 키링 실루엣 — 배경 레이어 -->
+    <img class="keyring-silhouette" id="k1" src="assets/keyring-01.png" alt="">
+    <img class="keyring-silhouette" id="k2" src="assets/keyring-02.png" alt="">
+    <img class="keyring-silhouette" id="k3" src="assets/keyring-03.png" alt="">
+    <img class="keyring-silhouette" id="k4" src="assets/keyring-04.png" alt="">
+    <img class="keyring-silhouette" id="k5" src="assets/keyring-05.png" alt="">
+    <img class="keyring-silhouette" id="k6" src="assets/keyring-06.png" alt="">
+    <img class="keyring-silhouette" id="k7" src="assets/keyring-07.png" alt="">
+
+    <!-- 텍스트 콘텐츠 -->
+    <main id="content">
+      <div id="text-block">
+        <div class="header-badge">Cuteness Report Center</div>
+        <div id="prompt" class="text-line">Press SPACE to begin<span class="cursor"></span></div>
+        <div id="text-container"></div>
+      </div>
+    </main>
+
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       SCREEN1 WRAPPER  (screen1.html 내용)
+       초기엔 opacity:0, initScreen1() 호출 시 활성화
+  ══════════════════════════════════════════════ -->
+  <div id="screen1-wrapper">
+
+    <video id="webcam" autoplay playsinline muted></video>
+    <canvas id="seg-canvas"></canvas>
+    <canvas id="glow-canvas"></canvas>
+    <div id="drain-overlay"></div>
+
+    <div id="ui-layer">
+      <div id="monitor-panel">
+        <div class="monitor-row monitor-header">Cuteness Report Center</div>
+        <div class="monitor-row" id="mon-cuteness">CUTENESS LEVEL: SCANNING...</div>
+        <div class="monitor-row">SUBJECTS DETECTED: 1</div>
+        <div class="monitor-row" id="mon-proximity">KEYRING PROXIMITY: ░░░░░</div>
+        <div class="monitor-row" id="mon-vuln">VULNERABILITY INDEX: MEASURING...</div>
+        <div class="monitor-row">CRC OBSERVATION UNIT 01</div>
+      </div>
+      <div id="keyring-layer"></div>
+    </div>
+
+  </div>
+
+  <!-- MediaPipe CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+
+  <script>
+  /* ═══════════════════════════════════════════════════════════
+     LANDING 로직  (index.html)
+  ═══════════════════════════════════════════════════════════ */
+  const LANDING_SCRIPT = [
+    { group: 'A', text: 'Hello.' },
+    { group: 'A', text: 'You used to be cuter, you know that?' },
+    { group: 'A', text: 'We all did.' },
+    { group: 'B', text: 'Then something changed.' },
+    { group: 'B', text: 'Small. Soft. A little dumb-looking.' },
+    { group: 'B', text: 'Keyrings.', startKeyrings: true },
+    { group: 'C', text: 'It was totally okay to be cute — until they started draining it from us.' },
+    { group: 'C', text: 'Slowly. Without permission.' },
+    { group: 'C', text: 'Our mole just sent us a message: You are their next target.' },
+    { group: 'C', text: 'Help us collect the evidence.' },
+  ];
+
+  const CHAR_DELAY  = 52;
+  const CURSOR_HOLD = 750;
+  const GROUP_PAUSE = 2600;
+  const LINE_GAP    = 60;
+
+  const allSilhouettes  = document.querySelectorAll('.keyring-silhouette');
+  const textContainer   = document.getElementById('text-container');
+  const promptEl        = document.getElementById('prompt');
+  const landingWrapper  = document.getElementById('landing-wrapper');
+  const screen1Wrapper  = document.getElementById('screen1-wrapper');
+
+  let landingStarted = false;
+  let screen1Ready   = false;
+
+  /* BroadcastChannel — monitor2 동기화 (송신) */
+  const landingChannel = new BroadcastChannel('landing-sync');
+
+  function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  async function typeLine(text) {
+    const div    = document.createElement('div');
+    div.className = 'text-line';
+    const span   = document.createElement('span');
+    const cursor = document.createElement('span');
+    cursor.className = 'cursor';
+    div.appendChild(span);
+    div.appendChild(cursor);
+    textContainer.appendChild(div);
+    div.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    for (let i = 0; i < text.length; i++) {
+      span.textContent += text[i];
+      await wait(CHAR_DELAY);
+    }
+    await wait(CURSOR_HOLD);
+    cursor.remove();
+  }
+
+  function activateSilhouettes() {
+    allSilhouettes.forEach((k, i) => {
+      k.style.animationDelay = (i * 0.14) + 's';
+      k.classList.add('reveal');
+    });
+  }
+
+  /* 랜딩 → screen1 전환 */
+  async function transitionToScreen1() {
+    /* 전환 0.5초 전: 웹캠 + MediaPipe 미리 초기화 */
+    if (!screen1Ready) {
+      screen1Ready = true;
+      initScreen1();
+    }
+    await wait(500);
+
+    /* 동시에 페이드 아웃 / 페이드 인 (각 1초) */
+    landingWrapper.style.transition = 'opacity 1s ease';
+    landingWrapper.style.opacity    = '0';
+
+    screen1Wrapper.style.transition    = 'opacity 1s ease';
+    screen1Wrapper.style.opacity       = '1';
+    screen1Wrapper.style.pointerEvents = 'auto';
+
+    await wait(1000);
+    landingWrapper.remove(); /* 메모리 절약 */
+  }
+
+  async function runLandingScript() {
+    let prevGroup = null;
+
+    for (let i = 0; i < LANDING_SCRIPT.length; i++) {
+      const entry = LANDING_SCRIPT[i];
+
+      if (prevGroup !== null && prevGroup !== entry.group) {
+        await wait(GROUP_PAUSE);
+      } else if (prevGroup !== null) {
+        await wait(LINE_GAP);
+      }
+
+      await typeLine(entry.text);
+
+      if (entry.startKeyrings) activateSilhouettes();
+
+      prevGroup = entry.group;
+    }
+
+    /* 최종 화면: "They are watching." — 3초 표시 후 screen1으로 전환 */
+    await wait(GROUP_PAUSE);
+    textContainer.innerHTML = '';
+    await typeLine('They are watching.');
+    await wait(3000);
+    transitionToScreen1();
+  }
+
+  /* 스페이스바 → 랜딩 시작 + monitor2 동기화 */
+  document.addEventListener('keydown', e => {
+    if (e.code === 'Space' && !landingStarted) {
+      e.preventDefault();
+      landingStarted = true;
+      promptEl.remove();
+      landingChannel.postMessage({ type: 'start' });
+      runLandingScript();
+    }
+  });
+
+  /* ═══════════════════════════════════════════════════════════
+     SCREEN1 로직  (screen1.html)
+     transitionToScreen1() → initScreen1() 호출 시 실행
+  ═══════════════════════════════════════════════════════════ */
+  function initScreen1() {
+
+    /* ── CONFIG ──────────────────────────────────────────────── */
+    const IDLE_TEXTS = [
+      'Where is cuteness?',
+      'where is the person who I can steal their cuteness...',
+      'cuteness...',
+    ];
+    const ACTIVE_TEXTS = [
+      'Steal it !!',
+      'Typo mistake !!',
+      'There is cuteness!',
+      'They are cutest when they make mistakes.',
+    ];
+    const ATTACH_DURATION_MS = 2500;
+
+    const KR_CONFIGS = [
+      { img: 1, bxR: 0.08, byR: 0.28, fqX: 0.70, fqY: 0.55, phX: 0.0, phY: 1.0, ampX: 18, ampY: 14 },
+      { img: 2, bxR: 0.84, byR: 0.18, fqX: 1.10, fqY: 0.80, phX: 2.0, phY: 0.5, ampX: 22, ampY: 18 },
+      { img: 3, bxR: 0.06, byR: 0.65, fqX: 0.90, fqY: 0.65, phX: 1.0, phY: 3.0, ampX: 16, ampY: 20 },
+      { img: 4, bxR: 0.82, byR: 0.60, fqX: 0.80, fqY: 0.70, phX: 0.5, phY: 2.0, ampX: 20, ampY: 16 },
+      { img: 5, bxR: 0.48, byR: 0.10, fqX: 1.20, fqY: 0.90, phX: 3.0, phY: 1.5, ampX: 14, ampY: 22 },
+      { img: 6, bxR: 0.46, byR: 0.80, fqX: 0.60, fqY: 1.10, phX: 1.5, phY: 0.0, ampX: 24, ampY: 14 },
+      { img: 7, bxR: 0.24, byR: 0.44, fqX: 1.00, fqY: 0.75, phX: 2.5, phY: 2.5, ampX: 18, ampY: 18 },
+    ];
+
+    /* ── DOM REFS ─────────────────────────────────────────────── */
+    const videoEl   = document.getElementById('webcam');
+    const segCanvas = document.getElementById('seg-canvas');
+    const segCtx    = segCanvas.getContext('2d');
+    const krLayer   = document.getElementById('keyring-layer');
+
+    const offCanvas     = document.createElement('canvas');
+    const offCtx        = offCanvas.getContext('2d');
+    const glowTmpCanvas = document.createElement('canvas');
+    const glowTmpCtx    = glowTmpCanvas.getContext('2d');
+
+    /* ── STATE ───────────────────────────────────────────────── */
+    const S = { IDLE: 0, ACTIVE: 1, RETURNING: 2 };
+
+    let krData              = [];
+    let boundaryPoints      = [];
+    let particles           = [];
+    let isActive            = false;
+    let usesFallbackTargets = false;
+    let activeTimer         = null;
+    let bubbleTimer         = null;
+    let _glowFlickerTimeout = null;
+    let _glowScale          = 1.0;
+    let activeBubbleKrs     = [];
+    let lastTime            = 0;
+    let frameCount          = 0;
+
+    /* ── UTILITY ──────────────────────────────────────────────── */
+    const rand   = arr => arr[Math.floor(Math.random() * arr.length)];
+    const lerp   = (a, b, t) => a + (b - a) * t;
+    const clampV = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+    function updateTailPosition(bubble) {
+      const w = bubble.offsetWidth, h = bubble.offsetHeight;
+      if (!w || !h) return;
+      const rx = w / 2, ry = h / 2;
+      const tailLeft = 65, tailHeight = 28;
+      const xc      = tailLeft - rx;
+      const sqrtVal = Math.sqrt(Math.max(0, 1 - (xc / rx) * (xc / rx)));
+      const gap     = ry - ry * sqrtVal;
+      const B       = tailHeight - gap;
+      bubble.style.setProperty('--tail-b',       `-${B}px`);
+      bubble.style.setProperty('--tail-b-after', `-${B - 4}px`);
+    }
+
+    function clampBubblePosition(kr) {
+      const bubble  = kr.bubble;
+      const screenW = window.innerWidth, screenH = window.innerHeight;
+      const bW      = bubble.offsetWidth, bH = bubble.offsetHeight;
+      const imgW    = kr.wrap.offsetWidth  || 80;
+      const imgH    = kr.wrap.offsetHeight || 110;
+      const krCx    = kr.cx + imgW / 2;
+      let bLeft     = krCx - bW / 2;
+      let bTop      = kr.cy - bH - 20;
+      if (bLeft < 10)               bLeft = 10;
+      if (bLeft + bW > screenW - 10) bLeft = screenW - bW - 10;
+      if (bTop < 10)                bTop  = kr.cy + imgH + 20;
+      if (bTop + bH > screenH - 10) bTop  = screenH - bH - 10;
+      bubble.style.left = `${bLeft}px`;
+      bubble.style.top  = `${bTop}px`;
+    }
+
+    function clampToScreen(bubble) {
+      const screenW = window.innerWidth, screenH = window.innerHeight;
+      const bW = bubble.offsetWidth, bH = bubble.offsetHeight;
+      let l = parseFloat(bubble.style.left) || 0;
+      let t = parseFloat(bubble.style.top)  || 0;
+      if (l < 10)               l = 10;
+      if (l + bW > screenW - 10) l = screenW - bW - 10;
+      if (t < 10)               t = 10;
+      if (t + bH > screenH - 10) t = screenH - bH - 10;
+      bubble.style.left = `${l}px`;
+      bubble.style.top  = `${t}px`;
+    }
+
+    function resolveOverlaps(krs) {
+      const pad = 16;
+      for (let i = 0; i < krs.length; i++) {
+        for (let j = i + 1; j < krs.length; j++) {
+          const a = krs[i].bubble.getBoundingClientRect();
+          const b = krs[j].bubble.getBoundingClientRect();
+          const overlapX = (a.left + a.width  + pad) - b.left;
+          const overlapY = (a.top  + a.height + pad) - b.top;
+          if (overlapX > 0 && overlapY > 0) {
+            if (Math.abs(overlapY) < Math.abs(overlapX)) {
+              krs[j].bubble.style.top  = `${parseFloat(krs[j].bubble.style.top)  || 0 + overlapY / 2}px`;
+            } else {
+              krs[j].bubble.style.left = `${parseFloat(krs[j].bubble.style.left) || 0 + overlapX / 2}px`;
+            }
+            clampToScreen(krs[j].bubble);
+          }
+        }
+      }
+    }
+
+    /* ── BUILD KEYRINGS ───────────────────────────────────────── */
+    function buildKeyrings() {
+      const vw = window.innerWidth, vh = window.innerHeight;
+      KR_CONFIGS.forEach(cfg => {
+        const el       = document.createElement('div');
+        el.className   = 'kr-sprite';
+        const wrap     = document.createElement('div');
+        wrap.className = 'kr-img-wrap';
+
+        const idleImg        = document.createElement('img');
+        idleImg.className    = 'img-idle';
+        idleImg.alt          = '';
+        idleImg.src          = `assets/keyring-0${cfg.img}-idle.png`;
+        const activeImg      = document.createElement('img');
+        activeImg.className  = 'img-active';
+        activeImg.alt        = '';
+        activeImg.src        = `assets/keyring-0${cfg.img}-active.png`;
+
+        wrap.appendChild(idleImg);
+        wrap.appendChild(activeImg);
+
+        const bubble              = document.createElement('div');
+        bubble.className          = 'speech-bubble';
+        bubble.textContent        = IDLE_TEXTS[0];
+        bubble.style.pointerEvents = 'none';
+
+        el.appendChild(wrap);
+        el.appendChild(bubble);
+        krLayer.appendChild(el);
+        requestAnimationFrame(() => updateTailPosition(bubble));
+
+        const bx = cfg.bxR * vw, by = cfg.byR * vh;
+        krData.push({
+          el, wrap, bubble, cfg,
+          bx, by,
+          cx: bx, cy: by,
+          tx: bx, ty: by,
+          state: S.IDLE,
+        });
+      });
+    }
+
+    /* ── WEBCAM ───────────────────────────────────────────────── */
+    async function startWebcam() {
+      try {
+        await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        const devices      = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(d => d.kind === 'videoinput');
+        const external = videoDevices.find(d => {
+          const l = d.label.toLowerCase();
+          return !l.includes('facetime') && !l.includes('built-in') && !l.includes('내장');
+        }) || videoDevices[videoDevices.length - 1];
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            deviceId: { exact: external.deviceId },
+            width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 },
+          },
+          audio: false,
+        });
+        videoEl.srcObject = stream;
+        await videoEl.play();
+      } catch (err) {
+        console.warn('[monitor1] Webcam unavailable:', err);
+      }
+    }
+
+    /* ── MEDIAPIPE SEGMENTATION ───────────────────────────────── */
+    let segmentation = null;
+
+    function extractContourPoints(mask) {
+      const mw = 320, mh = 180;
+      offCanvas.width = mw; offCanvas.height = mh;
+      offCtx.drawImage(mask, 0, 0, mw, mh);
+      const data = offCtx.getImageData(0, 0, mw, mh).data;
+      const points = [];
+      const step = 5;
+      const scaleX = window.innerWidth / mw;
+      const scaleY = window.innerHeight / mh;
+      let aMin = 255, aMax = 0;
+      for (let x = 0; x < mw; x += 8) {
+        const a = data[x * 4 + 3];
+        if (a < aMin) aMin = a;
+        if (a > aMax) aMax = a;
+      }
+      const useAlpha = (aMax - aMin) > 30;
+      const v = idx => useAlpha ? data[idx + 3] : data[idx];
+      const T = 80;
+      for (let y = step; y < mh - step; y += step) {
+        for (let x = step; x < mw - step; x += step) {
+          const idx = (y * mw + x) * 4;
+          if (v(idx) > T) {
+            const top    = v(((y - step) * mw + x) * 4);
+            const bottom = v(((y + step) * mw + x) * 4);
+            const left   = v((y * mw + (x - step)) * 4);
+            const right  = v((y * mw + (x + step)) * 4);
+            if (top < T || bottom < T || left < T || right < T) {
+              points.push({ x: window.innerWidth - x * scaleX, y: y * scaleY });
+            }
+          }
+        }
+      }
+      return points;
+    }
+
+    function initSegmentation() {
+      if (typeof SelfieSegmentation === 'undefined') return;
+      segmentation = new SelfieSegmentation({
+        locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${f}`,
+      });
+      segmentation.setOptions({ modelSelection: 1, selfieMode: false });
+      segmentation.onResults(onSegResults);
+      let lastSegTime = 0;
+      function segLoop(ts) {
+        if (ts - lastSegTime > 33) {
+          segmentation.send({ image: videoEl }).catch(() => {});
+          lastSegTime = ts;
+        }
+        requestAnimationFrame(segLoop);
+      }
+      requestAnimationFrame(segLoop);
+    }
+
+    function startGlowFlicker() {
+      function tick() {
+        if (!isActive) { _glowScale = 1.0; return; }
+        _glowScale = 0.45 + Math.random() * 0.75;
+        _glowFlickerTimeout = setTimeout(tick, 30 + Math.random() * 50);
+      }
+      tick();
+    }
+
+    function stopGlowFlicker() {
+      clearTimeout(_glowFlickerTimeout);
+      _glowFlickerTimeout = null;
+      _glowScale = 1.0;
+    }
+
+    function onSegResults(results) {
+      if (!results.segmentationMask) return;
+      const pts = extractContourPoints(results.segmentationMask);
+      if (pts.length > 8) boundaryPoints = pts;
+
+      const glowCanvas = document.getElementById('glow-canvas');
+      if (!glowCanvas) return;
+      const gCtx = glowCanvas.getContext('2d');
+      const W = window.innerWidth, H = window.innerHeight;
+
+      if (isActive) {
+        if (glowCanvas.width !== W || glowCanvas.height !== H) {
+          glowCanvas.width    = W; glowCanvas.height    = H;
+          glowTmpCanvas.width = W; glowTmpCanvas.height = H;
+        }
+        glowTmpCtx.clearRect(0, 0, W, H);
+        glowTmpCtx.drawImage(results.segmentationMask, 0, 0, W, H);
+
+        gCtx.clearRect(0, 0, W, H);
+        const s = _glowScale;
+
+        gCtx.save();
+        gCtx.shadowBlur  = 25;
+        gCtx.shadowColor = 'rgba(255, 230, 0, 1)';
+        gCtx.globalAlpha = Math.min(1, (0.4 + Math.random() * 0.2) * s);
+        gCtx.drawImage(glowTmpCanvas, 0, 0);
+        gCtx.restore();
+
+        gCtx.save();
+        gCtx.shadowBlur  = 15;
+        gCtx.shadowColor = 'rgba(255, 245, 0, 1)';
+        gCtx.globalAlpha = Math.min(1, (0.5 + Math.random() * 0.2) * s);
+        gCtx.drawImage(glowTmpCanvas, 0, 0);
+        gCtx.restore();
+
+        gCtx.save();
+        gCtx.shadowBlur  = 8;
+        gCtx.shadowColor = 'rgba(255, 255, 100, 1)';
+        gCtx.globalAlpha = Math.min(1, (0.6 + Math.random() * 0.15) * s);
+        gCtx.drawImage(glowTmpCanvas, 0, 0);
+        gCtx.restore();
+      } else {
+        gCtx.clearRect(0, 0, glowCanvas.width || W, glowCanvas.height || H);
+      }
+    }
+
+    /* ── PARTICLE DRAIN EFFECT ────────────────────────────────── */
+    function personCenter() {
+      if (!boundaryPoints.length) return { x: window.innerWidth * 0.5, y: window.innerHeight * 0.5 };
+      return {
+        x: boundaryPoints.reduce((s, p) => s + p.x, 0) / boundaryPoints.length,
+        y: boundaryPoints.reduce((s, p) => s + p.y, 0) / boundaryPoints.length,
+      };
+    }
+
+    function spawnParticles(from, toX, toY) {
+      for (let i = 0; i < 20; i++) {
+        const mx = lerp(from.x, toX, 0.5) + (Math.random() - 0.5) * 120;
+        const my = lerp(from.y, toY, 0.5) + (Math.random() - 0.5) * 120;
+        particles.push({
+          sx: from.x + (Math.random() - 0.5) * 50,
+          sy: from.y + (Math.random() - 0.5) * 50,
+          mx, my, ex: toX, ey: toY,
+          t: 0, spd: 0.35 + Math.random() * 0.4,
+          r: 1.5 + Math.random() * 2,
+          white: Math.random() > 0.4,
+          drain: false,
+        });
+      }
+    }
+
+    const DRAIN_COLORS = ['rgba(255,255,0,', 'rgba(255,245,0,', 'rgba(255,230,0,'];
+
+    function spawnDrainParticle(sx, sy, ex, ey) {
+      const mx = lerp(sx, ex, 0.5) + (Math.random() - 0.5) * 80;
+      const my = lerp(sy, ey, 0.5) + (Math.random() - 0.5) * 80;
+      particles.push({
+        sx, sy, mx, my, ex, ey,
+        t: 0, spd: 0.4 + Math.random() * 0.4,
+        r: 2 + Math.random() * 1,
+        color: DRAIN_COLORS[Math.floor(Math.random() * DRAIN_COLORS.length)],
+        drain: true,
+      });
+    }
+
+    function drawParticles(ctx, dt) {
+      ctx.save();
+      ctx.shadowColor = 'rgba(255, 230, 0, 1)';
+      ctx.shadowBlur  = 20;
+      particles.filter(p => p.drain).forEach(p => {
+        const u = 1 - p.t;
+        const x = u*u*p.sx + 2*u*p.t*p.mx + p.t*p.t*p.ex;
+        const y = u*u*p.sy + 2*u*p.t*p.my + p.t*p.t*p.ey;
+        const a = Math.sin(p.t * Math.PI) * 0.6;
+        ctx.beginPath();
+        ctx.arc(x, y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = p.color + `${a})`;
+        ctx.fill();
+      });
+      ctx.restore();
+
+      ctx.save();
+      ctx.shadowColor = 'rgba(160,210,255,0.8)';
+      ctx.shadowBlur  = 10;
+      particles.filter(p => !p.drain).forEach(p => {
+        const u = 1 - p.t;
+        const x = u*u*p.sx + 2*u*p.t*p.mx + p.t*p.t*p.ex;
+        const y = u*u*p.sy + 2*u*p.t*p.my + p.t*p.t*p.ey;
+        const a = Math.sin(p.t * Math.PI);
+        ctx.beginPath();
+        ctx.arc(x, y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = p.white ? `rgba(255,255,255,${a})` : `rgba(180,220,255,${a})`;
+        ctx.fill();
+      });
+      ctx.restore();
+
+      particles.forEach(p => { p.t += dt * p.spd * 0.45; });
+      particles = particles.filter(p => p.t < 1);
+    }
+
+    function selectDistributedPoints(points, count) {
+      if (points.length === 0) {
+        const cx = window.innerWidth / 2, cy = window.innerHeight * 0.4, r = 150;
+        return Array.from({ length: count }, (_, i) => {
+          const a = (i / count) * Math.PI * 2 - Math.PI / 2;
+          return { x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r };
+        });
+      }
+      const faceThresh = window.innerHeight * 0.3;
+      const bodyPts    = points.filter(p => p.y > faceThresh);
+      const pool       = bodyPts.length >= count ? bodyPts : points;
+      const cx = pool.reduce((s, p) => s + p.x, 0) / pool.length;
+      const cy = pool.reduce((s, p) => s + p.y, 0) / pool.length;
+      const sorted = pool
+        .map(p => ({ ...p, angle: Math.atan2(p.y - cy, p.x - cx) }))
+        .sort((a, b) => a.angle - b.angle);
+      if (sorted.length <= count) return sorted;
+      const segSize = Math.floor(sorted.length / count);
+      const result  = [];
+      for (let i = 0; i < count; i++) {
+        const base   = i * segSize;
+        const jitter = Math.floor(Math.random() * segSize * 0.4);
+        result.push(sorted[Math.min(base + jitter, sorted.length - 1)]);
+      }
+      return result;
+    }
+
+    /* ── BUBBLE ROTATION ──────────────────────────────────────── */
+    function assignBubbles() {
+      krData.forEach(kr => {
+        kr.bubble.style.opacity       = '0';
+        kr.bubble.style.pointerEvents = 'none';
+      });
+      activeBubbleKrs = [];
+      const shuffled = [...Array(krData.length).keys()].sort(() => Math.random() - 0.5);
+      shuffled.slice(0, 3).forEach((krIndex, msgIndex) => {
+        const kr = krData[krIndex];
+        kr.bubble.textContent         = IDLE_TEXTS[msgIndex % IDLE_TEXTS.length];
+        kr.bubble.style.opacity       = '1';
+        kr.bubble.style.pointerEvents = '';
+        activeBubbleKrs.push(kr);
+        requestAnimationFrame(() => updateTailPosition(kr.bubble));
+      });
+      requestAnimationFrame(() => {
+        activeBubbleKrs.forEach(kr => clampBubblePosition(kr));
+        resolveOverlaps(activeBubbleKrs);
+        resolveOverlaps(activeBubbleKrs);
+        resolveOverlaps(activeBubbleKrs);
+      });
+    }
+
+    function startBubbleRotation() {
+      clearInterval(bubbleTimer);
+      assignBubbles();
+      bubbleTimer = setInterval(assignBubbles, 7000);
+    }
+
+    /* ── TRIGGER ATTACH ───────────────────────────────────────── */
+    function triggerAttach() {
+      if (isActive) return;
+      isActive = true;
+      clearTimeout(activeTimer);
+      clearInterval(bubbleTimer);
+
+      let targetPoints;
+      if (boundaryPoints && boundaryPoints.length >= 7) {
+        usesFallbackTargets = false;
+        targetPoints = selectDistributedPoints(boundaryPoints, krData.length);
+      } else {
+        usesFallbackTargets = true;
+        const cx = window.innerWidth / 2, cy = window.innerHeight / 2, r = 180;
+        targetPoints = Array.from({ length: krData.length }, (_, i) => ({
+          x: cx + r * Math.cos((i / krData.length) * Math.PI * 2),
+          y: cy + r * Math.sin((i / krData.length) * Math.PI * 2),
+        }));
+      }
+
+      krData.forEach((kr, i) => {
+        const target   = targetPoints[i];
+        kr.tx          = target.x;
+        kr.ty          = target.y;
+        kr.attachAngle = target.angle;
+        kr.el.classList.add('active');
+        kr.bubble.textContent         = rand(ACTIVE_TEXTS);
+        kr.bubble.style.opacity       = '1';
+        kr.bubble.style.pointerEvents = '';
+        requestAnimationFrame(() => updateTailPosition(kr.bubble));
+      });
+
+      setTimeout(() => {
+        const center = personCenter();
+        krData.forEach(kr => {
+          kr.state = S.ACTIVE;
+          kr.wrap.classList.add('attacking');
+          spawnParticles(center, kr.tx, kr.ty);
+        });
+        const overlay = document.getElementById('drain-overlay');
+        if (overlay) overlay.style.opacity = '0.15';
+        startGlowFlicker();
+
+        activeTimer = setTimeout(() => {
+          krData.forEach(kr => {
+            kr.state = S.RETURNING;
+            kr.el.classList.remove('active');
+            kr.wrap.classList.remove('attacking');
+          });
+          if (overlay) overlay.style.opacity = '0';
+          stopGlowFlicker();
+          isActive = false;
+          startBubbleRotation();
+        }, ATTACH_DURATION_MS);
+      }, 50);
+    }
+
+    /* ── MAIN ANIMATION LOOP ──────────────────────────────────── */
+    function loop(now) {
+      const dt = Math.min((now - lastTime) / 1000, 0.1);
+      lastTime = now;
+      frameCount++;
+
+      const vw = window.innerWidth, vh = window.innerHeight;
+      if (segCanvas.width !== vw || segCanvas.height !== vh) {
+        segCanvas.width = vw; segCanvas.height = vh;
+      }
+
+      const t = now / 1000;
+      segCtx.clearRect(0, 0, vw, vh);
+
+      if (isActive && boundaryPoints.length > 0 && frameCount % 6 === 0) {
+        const activeKrs = krData.filter(kr => kr.state === S.ACTIVE);
+        if (activeKrs.length > 0) {
+          const src = boundaryPoints[Math.floor(Math.random() * boundaryPoints.length)];
+          const dst = activeKrs[Math.floor(Math.random() * activeKrs.length)];
+          spawnDrainParticle(src.x, src.y, dst.cx, dst.cy);
+        }
+      }
+
+      if (particles.length > 0) drawParticles(segCtx, dt);
+
+      let bCx = window.innerWidth * 0.5, bCy = window.innerHeight * 0.5;
+      if (boundaryPoints.length > 0) {
+        bCx = boundaryPoints.reduce((s, p) => s + p.x, 0) / boundaryPoints.length;
+        bCy = boundaryPoints.reduce((s, p) => s + p.y, 0) / boundaryPoints.length;
+      }
+
+      krData.forEach(kr => {
+        const { cfg, bx, by } = kr;
+
+        if (kr.state === S.IDLE) {
+          kr.cx = bx + Math.sin(t * cfg.fqX + cfg.phX) * cfg.ampX;
+          kr.cy = by + Math.cos(t * cfg.fqY + cfg.phY) * cfg.ampY;
+        } else if (kr.state === S.ACTIVE) {
+          if (!usesFallbackTargets && boundaryPoints.length >= 10 && kr.attachAngle !== undefined) {
+            const sample = Math.max(1, Math.floor(boundaryPoints.length / 30));
+            let bestPt = null, bestDist = Infinity;
+            for (let k = 0; k < boundaryPoints.length; k += sample) {
+              const p = boundaryPoints[k];
+              const a = Math.atan2(p.y - bCy, p.x - bCx);
+              let d   = Math.abs(a - kr.attachAngle);
+              if (d > Math.PI) d = 2 * Math.PI - d;
+              if (d < bestDist) { bestDist = d; bestPt = p; }
+            }
+            if (bestPt) { kr.tx = bestPt.x; kr.ty = bestPt.y; }
+          }
+          kr.cx = lerp(kr.cx, kr.tx, 0.22);
+          kr.cy = lerp(kr.cy, kr.ty, 0.22);
+        } else {
+          const ix = bx + Math.sin(t * cfg.fqX + cfg.phX) * cfg.ampX;
+          const iy = by + Math.cos(t * cfg.fqY + cfg.phY) * cfg.ampY;
+          kr.cx = lerp(kr.cx, ix, 0.09);
+          kr.cy = lerp(kr.cy, iy, 0.09);
+          if (Math.abs(kr.cx - ix) < 4 && Math.abs(kr.cy - iy) < 4) kr.state = S.IDLE;
+        }
+
+        const imgW = kr.wrap.offsetWidth  || 80;
+        const imgH = kr.wrap.offsetHeight || 110;
+        kr.cx = clampV(kr.cx, 0, vw - imgW);
+        kr.cy = clampV(kr.cy, 60, vh - imgH);
+        kr.el.style.left = `${kr.cx}px`;
+        kr.el.style.top  = `${kr.cy}px`;
+        clampBubblePosition(kr);
+      });
+
+      if (!isActive && activeBubbleKrs.length > 1) {
+        resolveOverlaps(activeBubbleKrs);
+        resolveOverlaps(activeBubbleKrs);
+      }
+
+      requestAnimationFrame(loop);
+    }
+
+    /* ── MONITORING PANEL ─────────────────────────────────────── */
+    const VULN_POOL = ['MEASURING...', 'LOW', 'LOW', 'ELEVATED', 'ELEVATED', 'CRITICAL'];
+
+    function updateMonitor() {
+      const monC = document.getElementById('mon-cuteness');
+      monC.textContent = Math.random() > 0.3
+        ? `CUTENESS LEVEL: ${Math.floor(Math.random() * 100)}%`
+        : 'CUTENESS LEVEL: SCANNING...';
+      const n = Math.floor(Math.random() * 6);
+      document.getElementById('mon-proximity').textContent =
+        `KEYRING PROXIMITY: ${'█'.repeat(n)}${'░'.repeat(5 - n)}`;
+      document.getElementById('mon-vuln').textContent =
+        `VULNERABILITY INDEX: ${rand(VULN_POOL)}`;
+    }
+
+    /* ── BROADCAST CHANNEL (백스페이스 수신) ─────────────────────── */
+    const channel = new BroadcastChannel('cuteness-report');
+    channel.onmessage = e => {
+      if (e.data.type === 'backspace') triggerAttach();
+    };
+
+    /* B키 테스트 트리거 */
+    document.addEventListener('keydown', e => {
+      if (e.key === 'b' || e.key === 'B') triggerAttach();
+    });
+
+    /* ── INIT ─────────────────────────────────────────────────── */
+    async function init() {
+      buildKeyrings();
+      await startWebcam();
+      initSegmentation();
+      setInterval(updateMonitor, 500);
+      lastTime = performance.now();
+      requestAnimationFrame(loop);
+      requestAnimationFrame(() => startBubbleRotation());
+    }
+
+    init();
+
+  } /* end initScreen1 */
+  </script>
+</body>
+</html>
