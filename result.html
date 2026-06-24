@@ -16,7 +16,7 @@
 
     html, body {
       min-height: 100vh;
-      background: var(--navy);
+      background: #9399DC; /* screen2.html --bg 와 동일 */
       color: var(--light);
       font-family: var(--mono);
       -webkit-font-smoothing: antialiased;
@@ -31,8 +31,8 @@
     /* ── Header ─────────────────────────────────── */
     .header {
       text-align: center;
-      font-size: 0.65rem;
-      letter-spacing: 0.14em;
+      font-size: 16px;
+      letter-spacing: 0.18em;
       color: var(--dim);
       margin-bottom: 36px;
     }
@@ -66,18 +66,25 @@
     .divider {
       border: none;
       border-top: 1px solid rgba(243, 243, 243, 0.18);
-      margin-bottom: 36px;
+      margin: 52px 0;
     }
 
     /* ── Poem ────────────────────────────────────── */
     .poem {
-      font-size: clamp(0.78rem, 3.6vw, 0.96rem);
-      line-height: 2;
+      font-size: clamp(1.09rem, 5.04vw, 1.34rem);
+      line-height: 1.8;
       text-align: center;
       color: var(--light);
-      white-space: pre-line;
       letter-spacing: 0.01em;
       margin-bottom: 48px;
+    }
+
+    .poem p {
+      margin-bottom: 1.5em;
+    }
+
+    .poem p:last-child {
+      margin-bottom: 0;
     }
 
     /* ── Footer ──────────────────────────────────── */
@@ -98,16 +105,12 @@
 
     <hr class="divider">
 
-    <p class="poem">Cuteness happens in the second
-you lose control — just for a moment.
-
-The letter you didn't mean to type.
-The mistake you tried to erase.
-
-That split second of imperfection
-is the most human thing about you.
-
-And the keyrings have been stealing it.</p>
+    <div class="poem">
+      <p>Cuteness happens in the second<br>you lose control — just for a moment.</p>
+      <p>The letter you didn't mean to type.<br>The mistake you tried to erase.</p>
+      <p>That split second of imperfection<br>is the most human thing about you.</p>
+      <p>And the keyrings have been stealing it.</p>
+    </div>
 
     <p class="footer">— Cuteness Report Center</p>
   </div>
