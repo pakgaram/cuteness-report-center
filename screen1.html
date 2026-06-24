@@ -504,6 +504,25 @@
   ═══════════════════════════════════════════════════════════ */
   let segmentation = null;
 
+  /* 마스크 좌표 → 화면 좌표 변환 (object-fit: cover 보정) */
+  function maskToScreen(mx, my, maskW, maskH) {
+    const video  = document.querySelector('video');
+    const vw     = window.innerWidth;
+    const vh     = window.innerHeight;
+    const videoW = video.videoWidth  || maskW;
+    const videoH = video.videoHeight || maskH;
+    const scaleX = vw / videoW;
+    const scaleY = vh / videoH;
+    const scale  = Math.max(scaleX, scaleY); /* cover = 큰 쪽에 맞춤 */
+    const displayW = videoW * scale;
+    const displayH = videoH * scale;
+    const offsetX  = (vw - displayW) / 2;
+    const offsetY  = (vh - displayH) / 2;
+    const sx = mx * (maskW / videoW) * scale + offsetX;
+    const sy = my * (maskH / videoH) * scale + offsetY;
+    return { x: sx, y: sy };
+  }
+
   /* 마스크에서 사람 윤곽 포인트 추출 — 시각적 화면 좌표(px) 반환
      - 고정 320×180 다운스케일 (성능 + 안정성)
      - MediaPipe 버전에 따라 alpha 또는 R 채널 자동 감지 */
@@ -515,8 +534,6 @@
     const data   = offCtx.getImageData(0, 0, mw, mh).data;
     const points = [];
     const step   = 5;
-    const scaleX = window.innerWidth  / mw;
-    const scaleY = window.innerHeight / mh;
 
     /* 첫 행 샘플링으로 유효 채널 결정:
        alpha 분산이 크면 alpha 채널 사용, 일정(=255)하면 R 채널 사용 */
@@ -539,8 +556,8 @@
           const left   = v((y * mw + (x - step))      * 4);
           const right  = v((y * mw + (x + step))      * 4);
           if (top < T || bottom < T || left < T || right < T) {
-            /* X 반전: CSS scaleX(-1) 미러 영상과 좌표 일치 */
-            points.push({ x: window.innerWidth - x * scaleX, y: y * scaleY });
+            const screenPt = maskToScreen(x, y, mw, mh);
+            points.push({ x: screenPt.x, y: screenPt.y });
           }
         }
       }
