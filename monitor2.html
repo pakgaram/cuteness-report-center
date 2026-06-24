@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CRC — Monitor 02</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      /* Landing */
+      --navy:         #141497;
+      --light:        #F3F3F3;
+      --mono:         'Input Mono', 'Courier New', Courier, monospace;
+      --fs:           clamp(0.73rem, 1.47vw, 2.1rem);
+      --ls:           -0.06em;
+      /* Screen2 */
+      --bg:           #9399DC;
+      --white:        #FFFFFF;
+      --hint-bg:      #E9E8E8;
+      --type-bg:      #D1D1D1;
+      --type-border:  #747070;
+      --text:         #2D2D2D;
+      --black:        #000000;
+      --bub-border:   #202020;
+      --fs-main:      clamp(0.62rem,  1.4vw,  1.76rem);
+      --fs-type:      clamp(0.68rem,  1.56vw, 2rem);
+      --fs-bubble:    clamp(0.52rem,  1.12vw, 1.44rem);
+      --fs-btn:       clamp(0.44rem,  0.96vw, 1.2rem);
+      --indent:       clamp(10px, 1.1vw, 18px);
+      --lh-type:      calc(var(--fs-type) * 1.55);
+    }
+
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+      font-family: var(--mono);
+    }
+
+    /* ── 래퍼 ──────────────────────────────────────────────────── */
+    #landing-wrapper {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      background: var(--navy);
+      overflow-y: auto;
+      color: var(--light);
+      font-family: var(--mono);
+      font-size: var(--fs);
+      letter-spacing: var(--ls);
+      font-weight: 400;
+    }
+
+    #screen2-wrapper {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    /* ════════════════════════════════════════════
+       LANDING 스타일  (index.html)
+    ════════════════════════════════════════════ */
+    .header-badge {
+      display: inline-block;
+      background: var(--light);
+      color: var(--navy);
+      font-family: var(--mono);
+      font-size: var(--fs);
+      letter-spacing: var(--ls);
+      font-weight: 400;
+      line-height: 1.2;
+      padding: 0.12em 0.38em;
+      white-space: nowrap;
+      margin-bottom: 1.6em;
+    }
+
+    #content {
+      position: relative;
+      z-index: 10;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: max(40px, calc(50vh - 9.5em)) 5% 22vh;
+    }
+
+    #text-block { max-width: 54ch; width: 100%; }
+
+    .text-line {
+      display: block;
+      line-height: 1.58;
+      white-space: pre-wrap;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0; }
+    }
+
+    /* 랜딩 커서 — 네이비 배경 위, 밝은 색 */
+    #landing-wrapper .cursor {
+      display: inline-block;
+      width: 0.55em;
+      height: 0.82em;
+      background: var(--light);
+      vertical-align: bottom;
+      margin-bottom: 0.07em;
+      margin-left: 0.06em;
+      animation: blink 1s step-end infinite;
+    }
+
+    /* 키링 실루엣 (랜딩용) */
+    .keyring-silhouette {
+      position: fixed;
+      z-index: 1;
+      opacity: 0;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    @keyframes kr-reveal {
+      0%   { opacity: 0;    filter: blur(42px) brightness(0.20); }
+      12%  { opacity: 0.12; filter: blur(34px) brightness(0.24); }
+      40%  { opacity: 0.38; filter: blur(20px) brightness(0.30); }
+      72%  { opacity: 0.60; filter: blur(11px) brightness(0.37); }
+      100% { opacity: 0.78; filter: blur(6px)  brightness(0.44); }
+    }
+
+    .keyring-silhouette.reveal {
+      animation: kr-reveal 17s ease-out forwards;
+    }
+
+    #k1 { left: -4%;  bottom: 4%;  width: 19%; }
+    #k2 { left: 59%;  bottom: 0%;  width: 19%; }
+    #k3 { left:  7%;  bottom: 0%;  width: 19%; }
+    #k4 { left: 86%;  bottom: 5%;  width: 19%; }
+    #k5 { left: 23%;  bottom: 3%;  width: 19%; }
+    #k6 { left: 41%;  bottom: 0%;  width: 19%; }
+    #k7 { left: 74%;  bottom: 2%;  width: 19%; }
+
+    /* ════════════════════════════════════════════
+       SCREEN2 스타일  (screen2.html)
+    ════════════════════════════════════════════ */
+    .page {
+      width: 100%; height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .report-panel {
+      width: clamp(384px, 52.8vw, 960px);
+      height: 72vh;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      z-index: 10;
+      box-shadow: 5px -5px 10px rgba(0,0,0,0.25);
+    }
+
+    .panel-header {
+      background: var(--navy);
+      color: var(--light);
+      font-size: var(--fs-main);
+      letter-spacing: var(--ls);
+      font-weight: 400;
+      height: 2em;
+      display: flex;
+      align-items: center;
+      padding: 0 0.55em;
+      flex-shrink: 0;
+      box-shadow: 5px -5px 10px rgba(0,0,0,0.25);
+    }
+
+    .panel-instruction,
+    .panel-hints,
+    .panel-typing {
+      background: #D1D1D1;
+      border-top:    6px solid #F7F4F4;
+      border-left:   6px solid #F7F4F4;
+      border-bottom: 6px solid #747070;
+      border-right:  6px solid #747070;
+    }
+
+    .panel-instruction { padding: 12px 16px; flex-shrink: 0; }
+
+    .instruction-text {
+      color: var(--text);
+      font-size: var(--fs-main);
+      letter-spacing: var(--ls);
+      font-weight: 400;
+      line-height: 1.45;
+    }
+
+    .panel-hints { padding: 12px 16px; flex-shrink: 0; }
+
+    .hints-text {
+      color: var(--text);
+      font-size: var(--fs-main);
+      letter-spacing: var(--ls);
+      font-weight: 400;
+      line-height: 1.52;
+    }
+
+    .panel-typing {
+      flex: 1;
+      min-height: 300px;
+      position: relative;
+      padding: 12px 16px 3.5em;
+      overflow-y: auto;
+    }
+
+    .typing-display {
+      font-size: var(--fs-type);
+      letter-spacing: var(--ls);
+      font-weight: 400;
+      color: var(--text);
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .mistake-img {
+      display: inline-block;
+      height: 1.26em;
+      width: auto;
+      vertical-align: -0.15em;
+      margin: 0 0.02em;
+    }
+
+    .mistake-img[data-letter="a"],.mistake-img[data-letter="b"],
+    .mistake-img[data-letter="c"],.mistake-img[data-letter="d"],
+    .mistake-img[data-letter="e"],.mistake-img[data-letter="m"],
+    .mistake-img[data-letter="n"],.mistake-img[data-letter="o"],
+    .mistake-img[data-letter="r"],.mistake-img[data-letter="s"],
+    .mistake-img[data-letter="u"],.mistake-img[data-letter="v"],
+    .mistake-img[data-letter="w"],.mistake-img[data-letter="x"] {
+      transform: translateY(3px);
+    }
+    .mistake-img[data-letter="g"],.mistake-img[data-letter="p"],
+    .mistake-img[data-letter="q"],.mistake-img[data-letter="y"],
+    .mistake-img[data-letter="z"] {
+      transform: translateY(5px);
+    }
+    .mistake-img[data-letter="i"],
+    .mistake-img[data-letter="j"],
+    .mistake-img[data-letter="l"] {
+      transform: scale(1.45);
+    }
+    .mistake-img[data-letter="o"],
+    .mistake-img[data-letter="x"] {
+      transform: translateY(3px) scale(1.3);
+    }
+    .mistake-img[data-letter="y"] {
+      transform: translateY(5px) scale(1.3);
+    }
+
+    .mistake-span + .mistake-span { margin-left: -3px; }
+
+    /* screen2 커서 — 밝은 배경 위, 어두운 색 */
+    #screen2-wrapper .cursor {
+      display: inline-block;
+      width: 0.55em;
+      height: 0.85em;
+      background: var(--text);
+      vertical-align: bottom;
+      margin-left: 0.04em;
+      animation: blink 1s step-end infinite;
+    }
+
+    .qr-btn {
+      position: absolute;
+      bottom: 0.9em;
+      right: 1.2em;
+      height: clamp(28px, 4vh, 48px);
+      width: auto;
+      cursor: pointer;
+      z-index: 5;
+      display: block;
+    }
+    .qr-btn:hover { opacity: 0.85; }
+
+    .sil-wrap {
+      position: fixed;
+      pointer-events: none;
+      user-select: none;
+      z-index: 9;
+    }
+    .sil-img {
+      display: block;
+      width: clamp(100px, 13vw, 210px);
+      height: auto;
+      object-fit: contain;
+    }
+    .sil-img[data-silnum="3"] { width: clamp(85px, 11.05vw, 178px); }
+
+    .sil-float-left  { animation: sil-float-left  3.5s ease-in-out infinite; }
+    .sil-float-right { animation: sil-float-right 3.5s ease-in-out infinite; }
+
+    @keyframes sil-float-left {
+      0%, 100% { transform: translateX(0);    }
+      50%      { transform: translateX(-10px); }
+    }
+    @keyframes sil-float-right {
+      0%, 100% { transform: translateX(0);   }
+      50%      { transform: translateX(10px); }
+    }
+
+    .talk-wrap {
+      position: fixed;
+      pointer-events: none;
+      z-index: 11;
+      opacity: 0;
+    }
+    .talk-bg {
+      display: block;
+      width: clamp(109px, 15vw, 218px);
+      height: auto;
+    }
+
+    #qr-modal {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.55);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+    }
+    #qr-modal.open { display: flex; }
+
+    .qr-inner {
+      background: var(--white);
+      padding: 2.5em 2.5em 2em;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1.2em;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    }
+    .qr-inner img { width: 280px; height: 280px; display: block; }
+
+    .qr-close {
+      background: none;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+      display: block;
+    }
+    .qr-close img { display: block; height: clamp(28px, 4vh, 48px); width: auto; }
+    .qr-close:hover { opacity: 0.85; }
+  </style>
+</head>
+<body>
+
+  <!-- ══════════════════════════════════════════════
+       LANDING WRAPPER  (index.html 내용)
+  ══════════════════════════════════════════════ -->
+  <div id="landing-wrapper">
+
+    <!-- 키링 실루엣 — 배경 레이어 -->
+    <img class="keyring-silhouette" id="k1" src="assets/keyring-01.png" alt="">
+    <img class="keyring-silhouette" id="k2" src="assets/keyring-02.png" alt="">
+    <img class="keyring-silhouette" id="k3" src="assets/keyring-03.png" alt="">
+    <img class="keyring-silhouette" id="k4" src="assets/keyring-04.png" alt="">
+    <img class="keyring-silhouette" id="k5" src="assets/keyring-05.png" alt="">
+    <img class="keyring-silhouette" id="k6" src="assets/keyring-06.png" alt="">
+    <img class="keyring-silhouette" id="k7" src="assets/keyring-07.png" alt="">
+
+    <!-- 텍스트 콘텐츠 -->
+    <main id="content">
+      <div id="text-block">
+        <div class="header-badge">Cuteness Report Center</div>
+        <div id="prompt" class="text-line">Waiting for signal...<span class="cursor"></span></div>
+        <div id="text-container"></div>
+      </div>
+    </main>
+
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       SCREEN2 WRAPPER  (screen2.html 내용)
+       초기엔 opacity:0, initScreen2() 호출 시 활성화
+  ══════════════════════════════════════════════ -->
+  <div id="screen2-wrapper">
+
+    <!-- 실루엣 & 말풍선은 JS가 여기에 주입 -->
+    <div id="sil-root"></div>
+
+    <div class="page">
+      <div class="report-panel">
+
+        <!-- Header bar -->
+        <div class="panel-header">Cuteness Report Center</div>
+
+        <!-- Instruction -->
+        <div class="panel-instruction">
+          <p class="instruction-text">
+            When did you last feel that something was cute?<br>
+            Write it down on the below.
+          </p>
+        </div>
+
+        <!-- Hints -->
+        <div class="panel-hints">
+          <p class="hints-text">
+            → Think of a moment you found something or someone cute.<br>
+            → Maybe a friend who laughed at their own mistake.<br>
+            → Maybe a stranger who tripped and shrugged it off.<br>
+            → Maybe a cat doing something deeply stupid.
+          </p>
+        </div>
+
+        <!-- Typing area -->
+        <div class="panel-typing" id="typing-box">
+          <div class="typing-display" id="display">
+            <span id="prefix">I think ... </span>
+            <span id="typed-content"></span>
+            <span class="cursor"></span>
+          </div>
+          <img src="assets/QR.svg" id="qr-btn" class="qr-btn" alt="QR code">
+        </div>
+
+      </div>
+    </div>
+
+    <!-- QR modal -->
+    <div id="qr-modal">
+      <div class="qr-inner">
+        <img id="qr-img" src="" alt="QR Code">
+        <button class="qr-close" id="qr-close">
+          <img src="assets/CLOSE.svg" alt="Close">
+        </button>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+  /* ═══════════════════════════════════════════════════════════
+     LANDING 로직  (index.html)
+     monitor1의 'landing-sync' 신호를 수신해서 시작
+  ═══════════════════════════════════════════════════════════ */
+  const LANDING_SCRIPT = [
+    { group: 'A', text: 'Hello.' },
+    { group: 'A', text: 'You used to be cuter, you know that?' },
+    { group: 'A', text: 'We all did.' },
+    { group: 'B', text: 'Then something changed.' },
+    { group: 'B', text: 'Small. Soft. A little dumb-looking.' },
+    { group: 'B', text: 'Keyrings.', startKeyrings: true },
+    { group: 'C', text: 'It was totally okay to be cute — until they started draining it from us.' },
+    { group: 'C', text: 'Slowly. Without permission.' },
+    { group: 'C', text: 'Our mole just sent us a message: You are their next target.' },
+    { group: 'C', text: 'Help us collect the evidence.' },
+  ];
+
+  const CHAR_DELAY  = 52;
+  const CURSOR_HOLD = 750;
+  const GROUP_PAUSE = 2600;
+  const LINE_GAP    = 60;
+
+  const allSilhouettes = document.querySelectorAll('.keyring-silhouette');
+  const textContainer  = document.getElementById('text-container');
+  const promptEl       = document.getElementById('prompt');
+  const landingWrapper = document.getElementById('landing-wrapper');
+  const screen2Wrapper = document.getElementById('screen2-wrapper');
+
+  let landingStarted = false;
+  let screen2Ready   = false;
+
+  /* BroadcastChannel — monitor1 신호 수신 */
+  const landingChannel = new BroadcastChannel('landing-sync');
+  landingChannel.onmessage = e => {
+    if (e.data.type === 'start' && !landingStarted) {
+      landingStarted = true;
+      promptEl.remove();
+      runLandingScript();
+    }
+  };
+
+  function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  async function typeLine(text) {
+    const div     = document.createElement('div');
+    div.className = 'text-line';
+    const span    = document.createElement('span');
+    const cursor  = document.createElement('span');
+    cursor.className = 'cursor';
+    div.appendChild(span);
+    div.appendChild(cursor);
+    textContainer.appendChild(div);
+    div.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    for (let i = 0; i < text.length; i++) {
+      span.textContent += text[i];
+      await wait(CHAR_DELAY);
+    }
+    await wait(CURSOR_HOLD);
+    cursor.remove();
+  }
+
+  function activateSilhouettes() {
+    allSilhouettes.forEach((k, i) => {
+      k.style.animationDelay = (i * 0.14) + 's';
+      k.classList.add('reveal');
+    });
+  }
+
+  /* 랜딩 → screen2 전환 */
+  async function transitionToScreen2() {
+    if (!screen2Ready) {
+      screen2Ready = true;
+      initScreen2();
+    }
+
+    landingWrapper.style.transition = 'opacity 1s ease';
+    landingWrapper.style.opacity    = '0';
+
+    screen2Wrapper.style.transition    = 'opacity 1s ease';
+    screen2Wrapper.style.opacity       = '1';
+    screen2Wrapper.style.pointerEvents = 'auto';
+
+    await wait(1000);
+    landingWrapper.remove();
+  }
+
+  async function runLandingScript() {
+    let prevGroup = null;
+
+    for (let i = 0; i < LANDING_SCRIPT.length; i++) {
+      const entry = LANDING_SCRIPT[i];
+
+      if (prevGroup !== null && prevGroup !== entry.group) {
+        await wait(GROUP_PAUSE);
+      } else if (prevGroup !== null) {
+        await wait(LINE_GAP);
+      }
+
+      await typeLine(entry.text);
+
+      if (entry.startKeyrings) activateSilhouettes();
+
+      prevGroup = entry.group;
+    }
+
+    /* 최종 화면: "Write it down — right here." → 3초 후 전환 */
+    await wait(GROUP_PAUSE);
+    textContainer.innerHTML = '';
+    await typeLine('Write it down — right here.');
+    await wait(3000);
+    transitionToScreen2();
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     SCREEN2 로직  (screen2.html)
+     transitionToScreen2() → initScreen2() 호출 시 실행
+  ═══════════════════════════════════════════════════════════ */
+  function initScreen2() {
+
+    /* ── Config ─────────────────────────────────────────────── */
+    const BUBBLE_TEXTS = ['They are cute !!', 'They are making mistakes.'];
+    const TOTAL_SILS   = 7;
+    const SIL_ANIM_MS  = 5000;
+
+    /* ── State ──────────────────────────────────────────────── */
+    const buf            = [];
+    const mistakeLetters = [];
+    const channel        = new BroadcastChannel('cuteness-report');
+    const typedContent   = document.getElementById('typed-content');
+
+    /* ── 문자 추가 ─────────────────────────────────────────── */
+    function addChar(v) {
+      const span       = document.createElement('span');
+      span.textContent = v;
+      typedContent.appendChild(span);
+      buf.push({ t: 'char', v, el: span });
+    }
+
+    /* ── 키보드 입력 ────────────────────────────────────────── */
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Backspace') { e.preventDefault(); handleBackspace(); return; }
+      if (e.key === 'Enter')     { e.preventDefault(); return; }
+    });
+
+    document.addEventListener('keypress', e => {
+      if (e.key.length === 1) addChar(e.key);
+    });
+
+    /* ── 백스페이스: 문자 → 귀여운 SVG 변환 ─────────────────── */
+    function handleBackspace() {
+      let idx = -1;
+      for (let i = buf.length - 1; i >= 0; i--) {
+        if (buf[i].t === 'char') { idx = i; break; }
+      }
+      if (idx === -1) return;
+
+      const item = buf[idx];
+      const lc   = item.v.toLowerCase();
+      item.t     = 'mistake';
+
+      if (/[a-z]/.test(lc)) {
+        const img          = document.createElement('img');
+        img.src            = `assets/letters/${lc}.svg`;
+        img.alt            = item.v;
+        img.className      = 'mistake-img';
+        img.dataset.letter = lc;
+        item.el.classList.add('mistake-span');
+        img.onerror = () => {
+          const fb          = document.createElement('span');
+          fb.textContent    = item.v;
+          fb.style.color    = '#FF56D8';
+          img.replaceWith(fb);
+        };
+        item.el.innerHTML = '';
+        item.el.appendChild(img);
+
+        mistakeLetters.push(lc);
+        channel.postMessage({ type: 'backspace', letter: lc });
+        showSilhouettes();
+      } else {
+        item.el.style.color = '#FF56D8';
+      }
+    }
+
+    /* ── 실루엣 렌더링 ──────────────────────────────────────── */
+    const silRoot  = document.getElementById('sil-root');
+    let silTimeout = null;
+
+    function pad2(n) { return String(n).padStart(2, '0'); }
+
+    function pickRandom2from7() {
+      return [...Array(TOTAL_SILS).keys()]
+        .map(i => i + 1)
+        .sort(() => Math.random() - 0.5)
+        .slice(0, 2);
+    }
+
+    function getSilW() {
+      return Math.min(210, Math.max(100, window.innerWidth * 0.13));
+    }
+
+    function showSilhouettes() {
+      silRoot.innerHTML = '';
+      clearTimeout(silTimeout);
+
+      const panel  = document.querySelector('.report-panel');
+      const rect   = panel.getBoundingClientRect();
+      const silW   = getSilW();
+      const silH   = silW * 1.4;
+      const vw     = window.innerWidth;
+
+      const yMin = rect.top + rect.height * 0.25;
+      const yMax = rect.top + rect.height * 0.60;
+      const yL   = yMin + Math.random() * (yMax - yMin);
+      const yR   = yMin + Math.random() * (yMax - yMin);
+
+      const leftX   = rect.left  - silW * 0.9;
+      const leftDx  = silW * 0.9;
+      const leftDy  = silH * 0.5;
+      const rightX  = rect.right - silW * 0.1;
+      const rightDx = -silW * 0.9;
+      const rightDy =  silH * 0.5;
+
+      const [silA, silB] = pickRandom2from7();
+
+      const configs = [
+        { silNum: silA, x: leftX,  y: yL, dx: leftDx,  dy: leftDy,  side: 'left'  },
+        { silNum: silB, x: rightX, y: yR, dx: rightDx, dy: rightDy, side: 'right' },
+      ];
+
+      function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+
+      configs.forEach(({ silNum, x: endX, y: endY, dx: startOffX, dy: startOffY, side }) => {
+        const tilt = side === 'left' ? -15 : 15;
+
+        /* 실루엣 래퍼 */
+        const wrap         = document.createElement('div');
+        wrap.className     = 'sil-wrap';
+        wrap.style.left    = `${endX}px`;
+        wrap.style.top     = `${endY}px`;
+        wrap.style.opacity = '0';
+        wrap.style.transform = `translate(${startOffX}px, ${startOffY}px) rotate(${tilt}deg)`;
+
+        const silImg           = document.createElement('img');
+        silImg.className       = 'sil-img';
+        silImg.src             = `assets/silhouettes/silhouette-${pad2(silNum)}.png`;
+        silImg.alt             = '';
+        silImg.dataset.silnum  = String(silNum);
+        wrap.appendChild(silImg);
+        silRoot.appendChild(wrap);
+
+        /* 베지어 커브 슬라이드인 */
+        const SLIDE_MS = 1600;
+        const ARC_PX   = 70;
+        const FLOAT_MS = 1600;
+        const FADE_MS  = 1700;
+        const t0 = performance.now();
+
+        function step(now) {
+          if (!wrap.parentNode) return;
+          const t    = Math.min((now - t0) / SLIDE_MS, 1);
+          const ease = easeOutCubic(t);
+
+          const offX = startOffX * (1 - ease);
+          const offY = startOffY * (1 - ease) + Math.sin(t * Math.PI) * ARC_PX;
+
+          wrap.style.transform = `translate(${offX}px, ${offY}px) rotate(${tilt}deg)`;
+          wrap.style.opacity   = String(ease);
+
+          if (t < 1) {
+            requestAnimationFrame(step);
+          } else {
+            wrap.style.transform = `rotate(${tilt}deg)`;
+            wrap.style.opacity   = '1';
+            silImg.classList.add(side === 'left' ? 'sil-float-left' : 'sil-float-right');
+
+            setTimeout(() => {
+              if (!wrap.parentNode) return;
+              wrap.style.transition = `opacity ${FADE_MS}ms ease`;
+              wrap.style.opacity    = '0';
+              setTimeout(() => {
+                if (wrap.parentNode) wrap.parentNode.removeChild(wrap);
+              }, FADE_MS + 100);
+              if (talkWrap && talkWrap.parentNode) {
+                talkWrap.style.transition = `opacity ${FADE_MS}ms ease`;
+                talkWrap.style.opacity    = '0';
+                setTimeout(() => {
+                  if (talkWrap.parentNode) talkWrap.parentNode.removeChild(talkWrap);
+                }, FADE_MS + 100);
+              }
+            }, FLOAT_MS);
+          }
+        }
+        requestAnimationFrame(step);
+
+        /* 말풍선 */
+        const isLeft   = side === 'left';
+        const bubSrc   = isLeft ? 'assets/talk-02.svg' : 'assets/talk-01.svg';
+        const bubW     = Math.min(218, Math.max(109, vw * 0.15));
+        const bubH     = bubW * (isLeft ? 209/354 : 272/405);
+
+        const talkWrap         = document.createElement('div');
+        talkWrap.className     = `talk-wrap ${isLeft ? 'talk-02' : 'talk-01'}`;
+        talkWrap.style.left    = isLeft ? `${endX - bubW * 0.8}px` : `${endX + silW * 0.85}px`;
+        talkWrap.style.top     = `${endY - bubH * 0.5}px`;
+
+        const bubImg   = document.createElement('img');
+        bubImg.className = 'talk-bg';
+        bubImg.src     = bubSrc;
+        bubImg.alt     = '';
+        talkWrap.appendChild(bubImg);
+        silRoot.appendChild(talkWrap);
+
+        setTimeout(() => {
+          if (!talkWrap.parentNode) return;
+          talkWrap.style.transition = 'opacity 0.3s ease';
+          talkWrap.style.opacity    = '1';
+        }, 500);
+      });
+
+      silTimeout = setTimeout(() => { silRoot.innerHTML = ''; }, SIL_ANIM_MS + 100);
+    }
+
+    /* ── QR 코드 ─────────────────────────────────────────────── */
+    document.getElementById('qr-btn').addEventListener('click', () => {
+      const encoded   = btoa(JSON.stringify(mistakeLetters));
+      const data      = encodeURIComponent(encoded);
+      const resultUrl = `https://pakgaram.github.io/cuteness-report-center/result.html?data=${data}`;
+      const qrUrl     = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(resultUrl)}`;
+      document.getElementById('qr-img').src = qrUrl;
+      document.getElementById('qr-modal').classList.add('open');
+    });
+
+    document.getElementById('qr-close').addEventListener('click', closeModal);
+    document.getElementById('qr-modal').addEventListener('click', e => {
+      if (e.target === document.getElementById('qr-modal')) closeModal();
+    });
+
+    function closeModal() {
+      document.getElementById('qr-modal').classList.remove('open');
+    }
+
+  } /* end initScreen2 */
+  </script>
+</body>
+</html>
