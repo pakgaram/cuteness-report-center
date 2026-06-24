@@ -809,35 +809,20 @@
      Phase 3 (4s 후)   : 복귀
   ═══════════════════════════════════════════════════════════ */
   function triggerAttach() {
+    console.log('[trigger] boundaryPoints count:', typeof boundaryPoints !== 'undefined' ? boundaryPoints.length : 'UNDEFINED');
     if (isActive) return;
     isActive = true;
     clearTimeout(activeTimer);
     clearInterval(bubbleTimer);
 
-    /* ── Phase 1: 목표 포인트 선택 ─────────────────────────────────
-       boundaryPoints ≥ 7개면 외곽선 분산 선택, 아니면 원형 fallback */
-    let targetPoints;
-    if (boundaryPoints && boundaryPoints.length >= 7) {
-      usesFallbackTargets = false;
-      targetPoints = selectDistributedPoints(boundaryPoints, krData.length);
-    } else {
-      usesFallbackTargets = true;
-      const cx = window.innerWidth  / 2;
-      const cy = window.innerHeight / 2;
-      const r  = 180;
-      targetPoints = Array.from({ length: krData.length }, (_, i) => ({
-        x: cx + r * Math.cos((i / krData.length) * Math.PI * 2),
-        y: cy + r * Math.sin((i / krData.length) * Math.PI * 2),
-      }));
-    }
-
+    // 각 키링에 고정 각도 구역 배정 (한 번만)
     krData.forEach((kr, i) => {
-      const target   = targetPoints[i];
-      kr.tx          = target.x;
-      kr.ty          = target.y;
-      kr.attachAngle = target.angle; /* fallback이면 undefined */
+      kr.angleTarget = (i / krData.length) * Math.PI * 2 - Math.PI;
+    });
 
-      /* 말풍선 전체 표시 + active 텍스트 */
+    krData.forEach((kr) => {
+      /* 말풍선 전체 표시 + active 텍스트
+         목표 위치(kr.tx/kr.ty)는 매 프레임 loop()에서 실시간 갱신 */
       kr.el.classList.add('active');
       kr.bubble.textContent         = rand(ACTIVE_TEXTS);
       kr.bubble.style.opacity       = '1';
@@ -918,6 +903,35 @@
       bCy = boundaryPoints.reduce((s, p) => s + p.y, 0) / boundaryPoints.length;
     }
 
+    /* ── 실시간 boundary 기반 목표 갱신 (ACTIVE 동안 매 프레임) ── */
+    if (isActive && boundaryPoints.length > 0) {
+      // 중심점 계산
+      const cx = boundaryPoints.reduce((s, p) => s + p.x, 0) / boundaryPoints.length;
+      const cy = boundaryPoints.reduce((s, p) => s + p.y, 0) / boundaryPoints.length;
+
+      krData.forEach(kr => {
+        // 각 키링의 고정 각도에 가장 가까운 boundary 포인트 찾기
+        let bestPt = null;
+        let bestDiff = Infinity;
+        boundaryPoints.forEach(p => {
+          const angle = Math.atan2(p.y - cy, p.x - cx);
+          let diff = Math.abs(angle - kr.angleTarget);
+          if (diff > Math.PI) diff = Math.PI * 2 - diff;
+          if (diff < bestDiff) {
+            bestDiff = diff;
+            bestPt = p;
+          }
+        });
+        if (bestPt) {
+          kr.tx = bestPt.x;
+          kr.ty = bestPt.y;
+        }
+      });
+      if (frameCount % 30 === 0 && krData[0]) {
+        console.log('[loop] kr0 tx:', krData[0].tx, 'ty:', krData[0].ty);
+      }
+    }
+
     /* ── Keyring positions ── */
     krData.forEach(kr => {
       const { cfg, bx, by } = kr;
@@ -926,24 +940,8 @@
         kr.cx = bx + Math.sin(t * cfg.fqX + cfg.phX) * cfg.ampX;
         kr.cy = by + Math.cos(t * cfg.fqY + cfg.phY) * cfg.ampY;
       } else if (kr.state === S.ACTIVE) {
-        /* 실시간 윤곽 추적: 저장된 각도에 가장 가까운 경계 포인트로 목표 갱신 */
-        if (!usesFallbackTargets && boundaryPoints.length >= 10 && kr.attachAngle !== undefined) {
-          const sample = Math.max(1, Math.floor(boundaryPoints.length / 30));
-          let bestPt = null, bestDist = Infinity;
-          for (let k = 0; k < boundaryPoints.length; k += sample) {
-            const p = boundaryPoints[k];
-            const a = Math.atan2(p.y - bCy, p.x - bCx);
-            let d   = Math.abs(a - kr.attachAngle);
-            if (d > Math.PI) d = 2 * Math.PI - d;
-            if (d < bestDist) { bestDist = d; bestPt = p; }
-          }
-          if (bestPt) {
-            kr.tx = bestPt.x; /* 이미 화면 픽셀 좌표 */
-            kr.ty = bestPt.y;
-          }
-        }
-        kr.cx = lerp(kr.cx, kr.tx, 0.22);
-        kr.cy = lerp(kr.cy, kr.ty, 0.22);
+        kr.cx = lerp(kr.cx, kr.tx, 0.15);
+        kr.cy = lerp(kr.cy, kr.ty, 0.15);
       } else { /* RETURNING */
         const ix = bx + Math.sin(t * cfg.fqX + cfg.phX) * cfg.ampX;
         const iy = by + Math.cos(t * cfg.fqY + cfg.phY) * cfg.ampY;
