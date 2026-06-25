@@ -1016,8 +1016,9 @@
   ═══════════════════════════════════════════════════════════ */
   const channel = new BroadcastChannel('cuteness-report');
   channel.onmessage = e => {
+    console.log('[screen1] 신호 수신:', e.data);
     if (e.data.type === 'backspace') {
-      console.log('[screen1] backspace 신호 수신 → triggerAttach()');
+      console.log('[screen1] triggerAttach() 호출');
       triggerAttach();
     }
   };
