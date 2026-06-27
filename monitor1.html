@@ -495,6 +495,8 @@
 
     let krData              = [];
     let boundaryPoints      = [];
+    let warmupFrames        = 0;
+    const WARMUP            = 60;
     let particles           = [];
     let isActive            = false;
     let usesFallbackTargets = false;
@@ -634,11 +636,21 @@
           audio: false,
         });
         videoEl.srcObject = stream;
+        videoEl.addEventListener('loadedmetadata', () => {
+          console.log('[camera] ready - videoWidth:', videoEl.videoWidth);
+          startSegLoop();
+        }, { once: true });
         await videoEl.play();
       } catch (err) {
         console.warn('[monitor1] Webcam unavailable:', err);
       }
     }
+
+    navigator.mediaDevices.addEventListener('devicechange', () => {
+      console.log('[camera] device changed - resetting warmup');
+      warmupFrames = 0;
+      boundaryPoints = [];
+    });
 
     /* ── MEDIAPIPE SEGMENTATION ───────────────────────────────── */
     let segmentation = null;
@@ -685,6 +697,10 @@
       });
       segmentation.setOptions({ modelSelection: 1, selfieMode: false });
       segmentation.onResults(onSegResults);
+    }
+
+    function startSegLoop() {
+      if (!segmentation) return;
       let lastSegTime = 0;
       function segLoop(ts) {
         if (ts - lastSegTime > 33) {
@@ -713,8 +729,13 @@
 
     function onSegResults(results) {
       if (!results.segmentationMask) return;
+      // boundaryPoints는 항상 업데이트 (워밍업과 무관)
       const pts = extractContourPoints(results.segmentationMask);
       if (pts.length > 8) boundaryPoints = pts;
+
+      // 워밍업 체크는 glow 등 나머지 처리에만 적용
+      warmupFrames++;
+      if (warmupFrames < WARMUP) return;
 
       const glowCanvas = document.getElementById('glow-canvas');
       if (!glowCanvas) return;
@@ -890,7 +911,18 @@
 
     /* ── TRIGGER ATTACH ───────────────────────────────────────── */
     function triggerAttach() {
-      if (isActive) return;
+      // isActive 중에도 포인트만 즉시 갱신
+      if (isActive) {
+        if (boundaryPoints.length > 0) {
+          const pts = selectDistributedPoints(boundaryPoints, krData.length);
+          krData.forEach((kr, i) => {
+            kr.angleTarget = (i / krData.length) * Math.PI * 2 - Math.PI;
+            kr.tx = pts[i]?.x ?? kr.tx;
+            kr.ty = pts[i]?.y ?? kr.ty;
+          });
+        }
+        return;
+      }
       isActive = true;
       clearTimeout(activeTimer);
       clearInterval(bubbleTimer);
@@ -1051,8 +1083,8 @@
     /* ── INIT ─────────────────────────────────────────────────── */
     async function init() {
       buildKeyrings();
-      await startWebcam();
-      initSegmentation();
+      initSegmentation();   // segmentation 객체 먼저 준비
+      await startWebcam();  // 카메라 시작 → loadedmetadata → startSegLoop()
       setInterval(updateMonitor, 500);
       lastTime = performance.now();
       requestAnimationFrame(loop);
