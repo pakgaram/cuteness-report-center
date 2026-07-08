@@ -394,21 +394,6 @@
     if (e.data.type === 'reset') location.reload();
   };
 
-  /* 유휴 타이머 — 웹캠 화면 진입 후 20초 비활동 시 초기화 */
-  let idleTimer = null;
-  function resetIdleTimer() {
-    clearTimeout(idleTimer);
-    idleTimer = setTimeout(() => {
-      landingChannel.postMessage({ type: 'reset' });
-      location.reload();
-    }, 20000);
-  }
-  function startIdleTimer() {
-    resetIdleTimer();
-    document.addEventListener('mousemove', resetIdleTimer);
-    document.addEventListener('keydown', resetIdleTimer);
-  }
-
   /* 개발용: ?skip=true 파라미터로 랜딩 스킵 */
   if (new URLSearchParams(location.search).get('skip') === 'true') {
     landingStarted = true;
@@ -421,7 +406,6 @@
       landingWrapper.remove();
       screen1Wrapper.style.opacity = '1';
       screen1Wrapper.style.pointerEvents = 'auto';
-      startIdleTimer();
     }, 300);
   }
 
@@ -472,7 +456,6 @@
 
     await wait(1000);
     landingWrapper.remove(); /* 메모리 절약 */
-    startIdleTimer();
   }
 
   async function runLandingScript() {
