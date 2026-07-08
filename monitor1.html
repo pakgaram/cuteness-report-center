@@ -113,13 +113,13 @@
       animation: kr-reveal 17s ease-out forwards;
     }
 
-    #k1 { left: -4%;  bottom: 4%;  width: 19%; }
-    #k2 { left: 59%;  bottom: 0%;  width: 19%; }
-    #k3 { left:  7%;  bottom: 0%;  width: 19%; }
-    #k4 { left: 86%;  bottom: 5%;  width: 19%; }
-    #k5 { left: 23%;  bottom: 3%;  width: 19%; }
-    #k6 { left: 41%;  bottom: 0%;  width: 19%; }
-    #k7 { left: 74%;  bottom: 2%;  width: 19%; }
+    #k1 { left: -15.5%; bottom:  7.6%; width: 36.2%; }
+    #k2 { left:  71.3%; bottom: -2.8%; width: 38.5%; }
+    #k3 { left:  53.8%; top:    -8.3%; width: 46.4%; }
+    #k4 { left:  15.0%; bottom: -5.7%; width: 33.5%; }
+    #k5 { left:  42.9%; bottom:  2.5%; width: 36.5%; }
+    #k6 { left:  77.9%; top:    29.1%; width: 30.4%; }
+    #k7 { left: -20.3%; top:    11.2%; width: 42.6%; }
 
     /* ════════════════════════════════════════════
        SCREEN1 스타일  (screen1.html)
@@ -281,13 +281,13 @@
   <div id="landing-wrapper">
 
     <!-- 키링 실루엣 — 배경 레이어 -->
-    <img class="keyring-silhouette" id="k1" src="assets/keyring-01.png" alt="">
-    <img class="keyring-silhouette" id="k2" src="assets/keyring-02.png" alt="">
-    <img class="keyring-silhouette" id="k3" src="assets/keyring-03.png" alt="">
-    <img class="keyring-silhouette" id="k4" src="assets/keyring-04.png" alt="">
-    <img class="keyring-silhouette" id="k5" src="assets/keyring-05.png" alt="">
-    <img class="keyring-silhouette" id="k6" src="assets/keyring-06.png" alt="">
-    <img class="keyring-silhouette" id="k7" src="assets/keyring-07.png" alt="">
+    <img class="keyring-silhouette" id="k1" src="assets/silhouettes/silhouette-08.png" alt="">
+    <img class="keyring-silhouette" id="k2" src="assets/silhouettes/silhouette-09.png" alt="">
+    <img class="keyring-silhouette" id="k3" src="assets/silhouettes/silhouette-10.png" alt="">
+    <img class="keyring-silhouette" id="k4" src="assets/silhouettes/silhouette-11.png" alt="">
+    <img class="keyring-silhouette" id="k5" src="assets/silhouettes/silhouette-12.png" alt="">
+    <img class="keyring-silhouette" id="k6" src="assets/silhouettes/silhouette-13.png" alt="">
+    <img class="keyring-silhouette" id="k7" src="assets/silhouettes/silhouette-14.png" alt="">
 
     <!-- 텍스트 콘텐츠 -->
     <main id="content">
@@ -362,6 +362,21 @@
 
   /* BroadcastChannel — monitor2 동기화 (송신) */
   const landingChannel = new BroadcastChannel('landing-sync');
+
+  /* 개발용: ?skip=true 파라미터로 랜딩 스킵 */
+  if (new URLSearchParams(location.search).get('skip') === 'true') {
+    landingStarted = true;
+    if (promptEl) promptEl.remove();
+    screen1Ready = true;
+    initScreen1();
+    landingWrapper.style.transition = 'opacity 0.3s ease';
+    landingWrapper.style.opacity = '0';
+    setTimeout(() => {
+      landingWrapper.remove();
+      screen1Wrapper.style.opacity = '1';
+      screen1Wrapper.style.pointerEvents = 'auto';
+    }, 300);
+  }
 
   function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
 
