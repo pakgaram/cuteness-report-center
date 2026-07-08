@@ -509,7 +509,15 @@
     if (e.data.type === 'start' && !landingStarted) {
       landingStarted = true;
       promptEl.remove();
-      runLandingScript();
+    } else if (e.data.type === 'line-start') {
+      typeLine(e.data.text);
+      if (e.data.startKeyrings) activateSilhouettes();
+    } else if (e.data.type === 'clear') {
+      textContainer.innerHTML = '';
+    } else if (e.data.type === 'final-line') {
+      typeLine('Write it down — right here.');
+    } else if (e.data.type === 'screen-transition') {
+      transitionToScreen2();
     }
   };
 
@@ -558,32 +566,6 @@
     landingWrapper.remove();
   }
 
-  async function runLandingScript() {
-    let prevGroup = null;
-
-    for (let i = 0; i < LANDING_SCRIPT.length; i++) {
-      const entry = LANDING_SCRIPT[i];
-
-      if (prevGroup !== null && prevGroup !== entry.group) {
-        await wait(GROUP_PAUSE);
-      } else if (prevGroup !== null) {
-        await wait(LINE_GAP);
-      }
-
-      await typeLine(entry.text);
-
-      if (entry.startKeyrings) activateSilhouettes();
-
-      prevGroup = entry.group;
-    }
-
-    /* 최종 화면: "Write it down — right here." → 3초 후 전환 */
-    await wait(GROUP_PAUSE);
-    textContainer.innerHTML = '';
-    await typeLine('Write it down — right here.');
-    await wait(3000);
-    transitionToScreen2();
-  }
 
   /* ═══════════════════════════════════════════════════════════
      SCREEN2 로직  (screen2.html)

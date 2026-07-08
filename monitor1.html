@@ -163,6 +163,31 @@
         transparent 100%);
     }
 
+    #debug-canvas {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 98;
+    }
+
+    #debug-overlay {
+      position: fixed;
+      bottom: 12px;
+      right: 12px;
+      width: 220px;
+      max-height: 200px;
+      overflow-y: auto;
+      background: rgba(0,0,0,0.65);
+      color: #00ff88;
+      font-family: monospace;
+      font-size: 10px;
+      line-height: 1.4;
+      padding: 8px;
+      pointer-events: none;
+      z-index: 99;
+      white-space: pre;
+    }
+
     #ui-layer { z-index: 3; pointer-events: none; }
 
     #monitor-panel {
@@ -310,6 +335,8 @@
     <canvas id="seg-canvas"></canvas>
     <canvas id="glow-canvas"></canvas>
     <div id="drain-overlay"></div>
+    <canvas id="debug-canvas"></canvas>
+    <div id="debug-overlay"></div>
 
     <div id="ui-layer">
       <div id="monitor-panel">
@@ -357,8 +384,9 @@
   const landingWrapper  = document.getElementById('landing-wrapper');
   const screen1Wrapper  = document.getElementById('screen1-wrapper');
 
-  let landingStarted = false;
-  let screen1Ready   = false;
+  let landingStarted        = false;
+  let screen1Ready          = false;
+  let resetWarmupOnNextFrame = false;
 
   /* BroadcastChannel — monitor2 동기화 (송신) */
   const landingChannel = new BroadcastChannel('landing-sync');
@@ -421,6 +449,7 @@
     screen1Wrapper.style.transition    = 'opacity 1s ease';
     screen1Wrapper.style.opacity       = '1';
     screen1Wrapper.style.pointerEvents = 'auto';
+    resetWarmupOnNextFrame = true;
 
     await wait(1000);
     landingWrapper.remove(); /* 메모리 절약 */
@@ -438,6 +467,7 @@
         await wait(LINE_GAP);
       }
 
+      landingChannel.postMessage({ type: 'line-start', text: entry.text, startKeyrings: !!entry.startKeyrings });
       await typeLine(entry.text);
 
       if (entry.startKeyrings) activateSilhouettes();
@@ -448,8 +478,11 @@
     /* 최종 화면: "They are watching." — 3초 표시 후 screen1으로 전환 */
     await wait(GROUP_PAUSE);
     textContainer.innerHTML = '';
+    landingChannel.postMessage({ type: 'clear' });
+    landingChannel.postMessage({ type: 'final-line' });
     await typeLine('They are watching.');
     await wait(3000);
+    landingChannel.postMessage({ type: 'screen-transition' });
     transitionToScreen1();
   }
 
@@ -461,6 +494,11 @@
       promptEl.remove();
       landingChannel.postMessage({ type: 'start' });
       runLandingScript();
+      /* 랜딩 중 screen1 백그라운드 초기화 (카메라 워밍업) */
+      if (!screen1Ready) {
+        screen1Ready = true;
+        initScreen1();
+      }
     }
   });
 
@@ -511,6 +549,8 @@
     let krData              = [];
     let boundaryPoints      = [];
     let warmupFrames        = 0;
+    let segLoopCount        = 0;
+    let sendNextFrame       = null;
     const WARMUP            = 60;
     let particles           = [];
     let isActive            = false;
@@ -716,15 +756,18 @@
 
     function startSegLoop() {
       if (!segmentation) return;
-      let lastSegTime = 0;
-      function segLoop(ts) {
-        if (ts - lastSegTime > 33) {
-          segmentation.send({ image: videoEl }).catch(() => {});
-          lastSegTime = ts;
+      sendNextFrame = function() {
+        if (!segmentation) return;
+        segLoopCount++;
+        if (videoEl.readyState >= 2) {
+          segmentation.send({ image: videoEl }).catch(() => {
+            requestAnimationFrame(sendNextFrame);
+          });
+        } else {
+          requestAnimationFrame(sendNextFrame);
         }
-        requestAnimationFrame(segLoop);
-      }
-      requestAnimationFrame(segLoop);
+      };
+      requestAnimationFrame(sendNextFrame);
     }
 
     function startGlowFlicker() {
@@ -743,14 +786,23 @@
     }
 
     function onSegResults(results) {
-      if (!results.segmentationMask) return;
-      // boundaryPoints는 항상 업데이트 (워밍업과 무관)
-      const pts = extractContourPoints(results.segmentationMask);
-      if (pts.length > 8) boundaryPoints = pts;
+      /* 체인 방식: 결과를 받은 후 다음 프레임 예약 */
+      if (sendNextFrame) requestAnimationFrame(sendNextFrame);
 
-      // 워밍업 체크는 glow 등 나머지 처리에만 적용
+      if (!results.segmentationMask) return;
+
+      if (resetWarmupOnNextFrame) {
+        warmupFrames = 0;
+        boundaryPoints = [];
+        resetWarmupOnNextFrame = false;
+      }
+
       warmupFrames++;
       if (warmupFrames < WARMUP) return;
+
+      // 워밍업 완료 후에만 boundaryPoints 업데이트
+      const pts = extractContourPoints(results.segmentationMask);
+      if (pts.length > 8) boundaryPoints = pts;
 
       const glowCanvas = document.getElementById('glow-canvas');
       if (!glowCanvas) return;
@@ -1064,6 +1116,36 @@
       if (!isActive && activeBubbleKrs.length > 1) {
         resolveOverlaps(activeBubbleKrs);
         resolveOverlaps(activeBubbleKrs);
+      }
+
+      /* ── DEBUG OVERLAY (30프레임마다 업데이트) ── */
+      if (frameCount % 30 === 0) {
+        const dbgCanvas = document.getElementById('debug-canvas');
+        const dbgOverlay = document.getElementById('debug-overlay');
+        if (dbgCanvas && dbgOverlay) {
+          dbgCanvas.width = vw; dbgCanvas.height = vh;
+          const dc = dbgCanvas.getContext('2d');
+          dc.clearRect(0, 0, vw, vh);
+          if (boundaryPoints.length > 0) {
+            dc.fillStyle = '#00ff88';
+            boundaryPoints.forEach(p => {
+              dc.beginPath();
+              dc.arc(p.x, p.y, 3, 0, Math.PI * 2);
+              dc.fill();
+            });
+            const sample = boundaryPoints.filter((_, i) => i % 10 === 0);
+            dbgOverlay.textContent =
+              `[segLoop: ${segLoopCount}] [warmup: ${warmupFrames}/${WARMUP}]\n` +
+              `boundaryPoints: ${boundaryPoints.length}\n` +
+              sample.map(p => `(${Math.round(p.x)}, ${Math.round(p.y)})`).join('\n');
+          } else {
+            const warmupDone = warmupFrames >= WARMUP;
+            dbgOverlay.textContent =
+              `[segLoop: ${segLoopCount}] [warmup: ${warmupFrames}/${WARMUP}]\n` +
+              `boundaryPoints: 0\n` +
+              (warmupDone ? '(warmup 완료 - 사람 미감지)' : `(warmup 중 ${warmupFrames}/${WARMUP})`);
+          }
+        }
       }
 
       requestAnimationFrame(loop);
