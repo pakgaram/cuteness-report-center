@@ -803,6 +803,7 @@
       const qrUrl     = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(resultUrl)}`;
       document.getElementById('qr-img').src = qrUrl;
       document.getElementById('qr-modal').classList.add('open');
+      clearTimeout(idleTimer); /* QR 열려있는 동안 타이머 정지 */
     });
 
     document.getElementById('qr-close').addEventListener('click', closeModal);
@@ -812,6 +813,7 @@
 
     function closeModal() {
       document.getElementById('qr-modal').classList.remove('open');
+      resetIdleTimer(); /* 모달 닫으면 타이머 재시작 */
     }
 
   } /* end initScreen2 */
