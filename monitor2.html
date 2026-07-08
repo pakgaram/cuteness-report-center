@@ -518,8 +518,25 @@
       typeLine('Write it down — right here.');
     } else if (e.data.type === 'screen-transition') {
       transitionToScreen2();
+    } else if (e.data.type === 'reset') {
+      location.reload();
     }
   };
+
+  /* 유휴 타이머 — screen2 진입 후 20초 비활동 시 초기화 */
+  let idleTimer = null;
+  function resetIdleTimer() {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      landingChannel.postMessage({ type: 'reset' });
+      location.reload();
+    }, 20000);
+  }
+  function startIdleTimer() {
+    resetIdleTimer();
+    document.addEventListener('mousemove', resetIdleTimer);
+    document.addEventListener('keydown', resetIdleTimer);
+  }
 
   function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
 
@@ -564,6 +581,7 @@
 
     await wait(1000);
     landingWrapper.remove();
+    startIdleTimer();
   }
 
 
