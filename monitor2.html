@@ -395,19 +395,19 @@
       text-align: center;
       color: #F3F3F3;
       font-family: 'Input Mono', 'Courier New', Courier, monospace;
-      font-size: clamp(1.1rem, 2.8vw, 2.2rem);
+      font-size: clamp(2.2rem, 5.6vw, 4.4rem);
       letter-spacing: 0.04em;
       line-height: 1.7;
     }
     #reset-count {
       display: block;
-      font-size: clamp(2.5rem, 7vw, 6rem);
+      font-size: clamp(5rem, 14vw, 12rem);
       font-weight: bold;
       margin-top: 0.2em;
     }
     #reset-cancel-msg {
       display: block;
-      font-size: clamp(0.7rem, 1.4vw, 1.1rem);
+      font-size: clamp(1.4rem, 2.8vw, 2.2rem);
       opacity: 0.6;
       margin-top: 0.8em;
       letter-spacing: 0.06em;
@@ -590,6 +590,43 @@
     hideResetWarning();
     document.removeEventListener('mousemove', cancelReset);
     document.removeEventListener('keydown', cancelReset);
+    startIdleMonitoring();
+  }
+
+  /* 취소 후: 20초 idle 감지 → 경고 표시 → 추가 20초 후 리셋 (activity 있으면 다시 취소) */
+  function startIdleMonitoring() {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(startIdleCountdown, 20000);
+    document.addEventListener('mousemove', onIdleActivity);
+    document.addEventListener('keydown', onIdleActivity);
+  }
+
+  function onIdleActivity() {
+    clearTimeout(idleTimer);
+    clearInterval(countdownInterval);
+    hideResetWarning();
+    idleTimer = setTimeout(startIdleCountdown, 20000);
+  }
+
+  function startIdleCountdown() {
+    const warning = document.getElementById('reset-warning');
+    const countEl = document.getElementById('reset-count');
+    if (!warning || !countEl) return;
+    let count = 20;
+    countEl.textContent = count;
+    warning.classList.add('visible');
+    countdownInterval = setInterval(() => {
+      count--;
+      countEl.textContent = count;
+      if (count <= 0) {
+        clearInterval(countdownInterval);
+        document.removeEventListener('mousemove', onIdleActivity);
+        document.removeEventListener('keydown', onIdleActivity);
+        hideResetWarning();
+        landingChannel.postMessage({ type: 'reset' });
+        location.reload();
+      }
+    }, 1000);
   }
 
   function showResetWarning() {
