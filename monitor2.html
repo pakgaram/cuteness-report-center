@@ -565,7 +565,22 @@
     }
   };
 
-  /* QR 버튼 클릭 후 20초 카운트다운 → 리셋 */
+  /* 1분 idle 타이머 — QR 무관하게 activity 없으면 리셋 */
+  let minuteTimer = null;
+  function resetMinuteTimer() {
+    clearTimeout(minuteTimer);
+    minuteTimer = setTimeout(() => {
+      landingChannel.postMessage({ type: 'reset' });
+      location.reload();
+    }, 60000);
+  }
+  function startMinuteTimer() {
+    resetMinuteTimer();
+    document.addEventListener('mousemove', resetMinuteTimer);
+    document.addEventListener('keydown', resetMinuteTimer);
+  }
+
+  /* QR 버튼 클릭 후 카운트다운 → 리셋 */
   let idleTimer = null;
   let warnTimer = null;
   let countdownInterval = null;
@@ -694,6 +709,7 @@
 
     await wait(1000);
     landingWrapper.remove();
+    startMinuteTimer();
   }
 
 
