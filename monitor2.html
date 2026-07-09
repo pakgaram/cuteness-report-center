@@ -405,6 +405,13 @@
       font-weight: bold;
       margin-top: 0.2em;
     }
+    #reset-cancel-msg {
+      display: block;
+      font-size: clamp(0.7rem, 1.4vw, 1.1rem);
+      opacity: 0.6;
+      margin-top: 0.8em;
+      letter-spacing: 0.06em;
+    }
   </style>
 </head>
 <body>
@@ -484,6 +491,7 @@
       <div id="reset-warning-inner">
         Resetting in
         <span id="reset-count">20</span>
+        <span id="reset-cancel-msg">Move the mouse or type to cancel</span>
       </div>
     </div>
 
@@ -575,6 +583,15 @@
     }, 30000);
   }
 
+  function cancelReset() {
+    clearTimeout(idleTimer);
+    clearTimeout(warnTimer);
+    clearInterval(countdownInterval);
+    hideResetWarning();
+    document.removeEventListener('mousemove', cancelReset);
+    document.removeEventListener('keydown', cancelReset);
+  }
+
   function showResetWarning() {
     const warning  = document.getElementById('reset-warning');
     const countEl  = document.getElementById('reset-count');
@@ -587,6 +604,8 @@
       countEl.textContent = count;
       if (count <= 0) clearInterval(countdownInterval);
     }, 1000);
+    document.addEventListener('mousemove', cancelReset);
+    document.addEventListener('keydown', cancelReset);
   }
 
   function hideResetWarning() {
