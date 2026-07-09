@@ -97,6 +97,7 @@
       letter-spacing: 0.1em;
     }
   </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </head>
 <body>
 
@@ -159,6 +160,28 @@
         area.appendChild(img);
       });
     }
+
+    const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyDGLWM5EXb_wSyt1m2YQfMSF1Zo9yYxESMHtcDKlgxHrWwlrwN9kG6ka7B3xNxkfpm/exec';
+
+    setTimeout(() => {
+      const captureTarget = document.getElementById('letters-area');
+      html2canvas(captureTarget, {
+        backgroundColor: '#0715B7',
+        scale: 2
+      }).then(canvas => {
+        const imageBase64 = canvas.toDataURL('image/png');
+        fetch(APPS_SCRIPT_URL, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: '',
+            mistakes: mistakeLetters.join(', '),
+            image: imageBase64
+          })
+        }).catch(err => console.warn('이미지 전송 실패:', err));
+      });
+    }, 1000);
   </script>
 
 </body>
