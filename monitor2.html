@@ -550,7 +550,7 @@
     if (e.data.type === 'start' && !landingStarted) {
       landingStarted = true;
       promptEl.remove();
-      clearTimeout(idleTimer); /* 이전 세션 타이머 정리 */
+      clearAllResetTimers(); /* 이전 세션 타이머 정리 */
     } else if (e.data.type === 'line-start') {
       typeLine(e.data.text);
       if (e.data.startKeyrings) activateSilhouettes();
@@ -580,88 +580,84 @@
     document.addEventListener('keydown', resetMinuteTimer);
   }
 
-  /* QR 버튼 클릭 후 카운트다운 → 리셋 */
-  let idleTimer = null;
-  let warnTimer = null;
-  let countdownInterval = null;
+  /* QR 카운트다운 + idle 취소 후 재카운트 */
+  let qrIdleTimer  = null;
+  let qrWarnTimer  = null;
+  let postCancelIdleTimer = null;
+  let activeCountdownId   = null; /* 현재 실행 중인 setInterval ID */
 
+  function clearAllResetTimers() {
+    clearTimeout(qrIdleTimer);
+    clearTimeout(qrWarnTimer);
+    clearTimeout(postCancelIdleTimer);
+    clearInterval(activeCountdownId);
+    qrIdleTimer = qrWarnTimer = postCancelIdleTimer = activeCountdownId = null;
+    document.removeEventListener('mousemove', onCancelQR);
+    document.removeEventListener('keydown',   onCancelQR);
+    document.removeEventListener('mousemove', onCancelIdle);
+    document.removeEventListener('keydown',   onCancelIdle);
+    hideResetWarning();
+  }
+
+  function doReset() {
+    clearAllResetTimers();
+    landingChannel.postMessage({ type: 'reset' });
+    location.reload();
+  }
+
+  /* ── QR 클릭 시 ─────────────────────────────── */
   function startResetCountdown() {
-    clearTimeout(idleTimer);
-    clearTimeout(warnTimer);
-    clearInterval(countdownInterval);
-
-    warnTimer = setTimeout(showResetWarning, 10000);
-    idleTimer = setTimeout(() => {
-      hideResetWarning();
-      landingChannel.postMessage({ type: 'reset' });
-      location.reload();
-    }, 30000);
+    clearAllResetTimers();
+    qrWarnTimer = setTimeout(() => {
+      showCountdown(20);
+      document.addEventListener('mousemove', onCancelQR);
+      document.addEventListener('keydown',   onCancelQR);
+    }, 10000);
+    qrIdleTimer = setTimeout(doReset, 30000);
   }
 
-  function cancelReset() {
-    clearTimeout(idleTimer);
-    clearTimeout(warnTimer);
-    clearInterval(countdownInterval);
-    hideResetWarning();
-    document.removeEventListener('mousemove', cancelReset);
-    document.removeEventListener('keydown', cancelReset);
-    startIdleMonitoring();
+  function onCancelQR() {
+    clearAllResetTimers();
+    enterIdleMode();
   }
 
-  /* 취소 후: 20초 idle 감지 → 경고 표시 → 추가 20초 후 리셋 (activity 있으면 다시 취소) */
-  function startIdleMonitoring() {
-    clearTimeout(idleTimer);
-    idleTimer = setTimeout(startIdleCountdown, 20000);
-    document.addEventListener('mousemove', onIdleActivity);
-    document.addEventListener('keydown', onIdleActivity);
+  /* ── 취소 후 idle 감시 → 20초 무활동 → 카운트다운 → 리셋 ── */
+  function enterIdleMode() {
+    postCancelIdleTimer = setTimeout(startIdleCountdown, 20000);
+    document.addEventListener('mousemove', onCancelIdle);
+    document.addEventListener('keydown',   onCancelIdle);
   }
 
-  function onIdleActivity() {
-    clearTimeout(idleTimer);
-    clearInterval(countdownInterval);
-    hideResetWarning();
-    idleTimer = setTimeout(startIdleCountdown, 20000);
+  function onCancelIdle() {
+    clearAllResetTimers();
+    enterIdleMode();
   }
 
   function startIdleCountdown() {
+    showCountdown(20);
+    qrIdleTimer = setTimeout(doReset, 20000);
+  }
+
+  /* ── 카운트다운 표시 (ID 로컬 캡처로 중복 방지) ── */
+  function showCountdown(from) {
+    clearInterval(activeCountdownId);
     const warning = document.getElementById('reset-warning');
     const countEl = document.getElementById('reset-count');
     if (!warning || !countEl) return;
-    let count = 20;
-    countEl.textContent = count;
     warning.classList.add('visible');
-    countdownInterval = setInterval(() => {
+    let count = from;
+    countEl.textContent = count;
+    const id = setInterval(() => {
       count--;
       countEl.textContent = count;
-      if (count <= 0) {
-        clearInterval(countdownInterval);
-        document.removeEventListener('mousemove', onIdleActivity);
-        document.removeEventListener('keydown', onIdleActivity);
-        hideResetWarning();
-        landingChannel.postMessage({ type: 'reset' });
-        location.reload();
-      }
+      if (count <= 0) clearInterval(id);
     }, 1000);
-  }
-
-  function showResetWarning() {
-    const warning  = document.getElementById('reset-warning');
-    const countEl  = document.getElementById('reset-count');
-    if (!warning || !countEl) return;
-    let count = 20;
-    countEl.textContent = count;
-    warning.classList.add('visible');
-    countdownInterval = setInterval(() => {
-      count--;
-      countEl.textContent = count;
-      if (count <= 0) clearInterval(countdownInterval);
-    }, 1000);
-    document.addEventListener('mousemove', cancelReset);
-    document.addEventListener('keydown', cancelReset);
+    activeCountdownId = id;
   }
 
   function hideResetWarning() {
-    clearInterval(countdownInterval);
+    clearInterval(activeCountdownId);
+    activeCountdownId = null;
     const warning = document.getElementById('reset-warning');
     if (warning) warning.classList.remove('visible');
   }
