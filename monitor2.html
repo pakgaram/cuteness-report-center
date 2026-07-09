@@ -380,6 +380,31 @@
     }
     .qr-close img { display: block; height: clamp(28px, 4vh, 48px); width: auto; }
     .qr-close:hover { opacity: 0.85; }
+
+    #reset-warning {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 500;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, 0.65);
+    }
+    #reset-warning.visible { display: flex; }
+    #reset-warning-inner {
+      text-align: center;
+      color: #F3F3F3;
+      font-family: 'Input Mono', 'Courier New', Courier, monospace;
+      font-size: clamp(1.1rem, 2.8vw, 2.2rem);
+      letter-spacing: 0.04em;
+      line-height: 1.7;
+    }
+    #reset-count {
+      display: block;
+      font-size: clamp(2.5rem, 7vw, 6rem);
+      font-weight: bold;
+      margin-top: 0.2em;
+    }
   </style>
 </head>
 <body>
@@ -454,6 +479,14 @@
       </div>
     </div>
 
+    <!-- Reset warning overlay -->
+    <div id="reset-warning">
+      <div id="reset-warning-inner">
+        화면이 초기화됩니다
+        <span id="reset-count">10</span>
+      </div>
+    </div>
+
     <!-- QR modal -->
     <div id="qr-modal">
       <div class="qr-inner">
@@ -524,19 +557,42 @@
     }
   };
 
-  /* 유휴 타이머 — screen2 진입 후 20초 비활동 시 초기화 */
+  /* QR 버튼 클릭 후 20초 카운트다운 → 리셋 */
   let idleTimer = null;
-  function resetIdleTimer() {
+  let warnTimer = null;
+  let countdownInterval = null;
+
+  function startResetCountdown() {
     clearTimeout(idleTimer);
+    clearTimeout(warnTimer);
+    clearInterval(countdownInterval);
+
+    warnTimer = setTimeout(showResetWarning, 10000);
     idleTimer = setTimeout(() => {
+      hideResetWarning();
       landingChannel.postMessage({ type: 'reset' });
       location.reload();
     }, 20000);
   }
-  function startIdleTimer() {
-    resetIdleTimer();
-    document.addEventListener('mousemove', resetIdleTimer);
-    document.addEventListener('keydown', resetIdleTimer);
+
+  function showResetWarning() {
+    const warning  = document.getElementById('reset-warning');
+    const countEl  = document.getElementById('reset-count');
+    if (!warning || !countEl) return;
+    let count = 10;
+    countEl.textContent = count;
+    warning.classList.add('visible');
+    countdownInterval = setInterval(() => {
+      count--;
+      countEl.textContent = count;
+      if (count <= 0) clearInterval(countdownInterval);
+    }, 1000);
+  }
+
+  function hideResetWarning() {
+    clearInterval(countdownInterval);
+    const warning = document.getElementById('reset-warning');
+    if (warning) warning.classList.remove('visible');
   }
 
   function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -582,7 +638,6 @@
 
     await wait(1000);
     landingWrapper.remove();
-    startIdleTimer();
   }
 
 
@@ -804,7 +859,7 @@
       const qrUrl     = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(resultUrl)}`;
       document.getElementById('qr-img').src = qrUrl;
       document.getElementById('qr-modal').classList.add('open');
-      clearTimeout(idleTimer); /* QR 열려있는 동안 타이머 정지 */
+      startResetCountdown(); /* QR 클릭 시 20초 카운트다운 시작 */
     });
 
     document.getElementById('qr-close').addEventListener('click', closeModal);
@@ -814,7 +869,6 @@
 
     function closeModal() {
       document.getElementById('qr-modal').classList.remove('open');
-      resetIdleTimer(); /* 모달 닫으면 타이머 재시작 */
     }
 
   } /* end initScreen2 */
