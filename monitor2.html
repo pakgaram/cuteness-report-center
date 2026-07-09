@@ -509,6 +509,7 @@
     if (e.data.type === 'start' && !landingStarted) {
       landingStarted = true;
       promptEl.remove();
+      clearTimeout(idleTimer); /* 이전 세션 타이머 정리 */
     } else if (e.data.type === 'line-start') {
       typeLine(e.data.text);
       if (e.data.startKeyrings) activateSilhouettes();

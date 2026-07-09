@@ -391,7 +391,7 @@
   /* BroadcastChannel — monitor2 동기화 (송신/수신) */
   const landingChannel = new BroadcastChannel('landing-sync');
   landingChannel.onmessage = e => {
-    if (e.data.type === 'reset') location.reload();
+    if (e.data.type === 'reset' && landingStarted) location.reload();
   };
 
   /* 개발용: ?skip=true 파라미터로 랜딩 스킵 */
