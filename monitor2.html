@@ -921,6 +921,22 @@
 
     /* ── QR 코드 ─────────────────────────────────────────────── */
     document.getElementById('qr-btn').addEventListener('click', () => {
+      const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyDGLWM5EXb_wSyt1m2YQfMSF1Zo9yYxESMHtcDKlgxHrWwlrwN9kG6ka7B3xNxkfpm/exec';
+
+      // 타이핑 전체 텍스트 수집
+      const typedText = document.getElementById('typed-content')?.innerText || '';
+
+      // Google Sheets에 전송
+      fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: typedText,
+          mistakes: mistakeLetters.join(', ')
+        })
+      }).catch(err => console.warn('Sheets 전송 실패:', err));
+
       const encoded   = btoa(JSON.stringify(mistakeLetters));
       const data      = encodeURIComponent(encoded);
       const resultUrl = `https://pakgaram.github.io/cuteness-report-center/result.html?data=${data}`;
