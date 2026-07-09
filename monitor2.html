@@ -482,8 +482,8 @@
     <!-- Reset warning overlay -->
     <div id="reset-warning">
       <div id="reset-warning-inner">
-        화면이 초기화됩니다
-        <span id="reset-count">10</span>
+        Resetting in
+        <span id="reset-count">20</span>
       </div>
     </div>
 
@@ -572,14 +572,14 @@
       hideResetWarning();
       landingChannel.postMessage({ type: 'reset' });
       location.reload();
-    }, 20000);
+    }, 30000);
   }
 
   function showResetWarning() {
     const warning  = document.getElementById('reset-warning');
     const countEl  = document.getElementById('reset-count');
     if (!warning || !countEl) return;
-    let count = 10;
+    let count = 20;
     countEl.textContent = count;
     warning.classList.add('visible');
     countdownInterval = setInterval(() => {
